@@ -1,4 +1,11 @@
 export {
+	type AstGrepToolDetails,
+	type AstGrepToolInput,
+	type AstGrepToolOptions,
+	createAstGrepTool,
+	createAstGrepToolDefinition,
+} from "./ast-grep.ts";
+export {
 	type BashOperations,
 	type BashSpawnContext,
 	type BashSpawnHook,
@@ -81,6 +88,7 @@ export {
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "../extensions/types.ts";
+import { type AstGrepToolOptions, createAstGrepTool, createAstGrepToolDefinition } from "./ast-grep.ts";
 import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.ts";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.ts";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";
@@ -92,13 +100,14 @@ import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } fro
 
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
-export type ToolName = "read" | "bash" | "powershell" | "edit" | "write" | "grep" | "find" | "ls";
+export type ToolName = "read" | "bash" | "powershell" | "edit" | "write" | "ast_grep" | "grep" | "find" | "ls";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
 	"bash",
 	"powershell",
 	"edit",
 	"write",
+	"ast_grep",
 	"grep",
 	"find",
 	"ls",
@@ -110,6 +119,7 @@ export interface ToolsOptions {
 	powershell?: PowerShellToolOptions;
 	write?: WriteToolOptions;
 	edit?: EditToolOptions;
+	astGrep?: AstGrepToolOptions;
 	grep?: GrepToolOptions;
 	find?: FindToolOptions;
 	ls?: LsToolOptions;
@@ -127,6 +137,8 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createEditToolDefinition(cwd, options?.edit);
 		case "write":
 			return createWriteToolDefinition(cwd, options?.write);
+		case "ast_grep":
+			return createAstGrepToolDefinition(cwd, options?.astGrep);
 		case "grep":
 			return createGrepToolDefinition(cwd, options?.grep);
 		case "find":
@@ -150,6 +162,8 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createEditTool(cwd, options?.edit);
 		case "write":
 			return createWriteTool(cwd, options?.write);
+		case "ast_grep":
+			return createAstGrepTool(cwd, options?.astGrep);
 		case "grep":
 			return createGrepTool(cwd, options?.grep);
 		case "find":
@@ -173,7 +187,7 @@ export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions)
 export function createReadOnlyToolDefinitions(cwd: string, options?: ToolsOptions): ToolDef[] {
 	return [
 		createReadToolDefinition(cwd, options?.read),
-		createGrepToolDefinition(cwd, options?.grep),
+		createAstGrepToolDefinition(cwd, options?.astGrep),
 		createFindToolDefinition(cwd, options?.find),
 		createLsToolDefinition(cwd, options?.ls),
 	];
@@ -186,6 +200,7 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		powershell: createPowerShellToolDefinition(cwd, options?.powershell),
 		edit: createEditToolDefinition(cwd, options?.edit),
 		write: createWriteToolDefinition(cwd, options?.write),
+		ast_grep: createAstGrepToolDefinition(cwd, options?.astGrep),
 		grep: createGrepToolDefinition(cwd, options?.grep),
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
@@ -204,7 +219,7 @@ export function createCodingTools(cwd: string, options?: ToolsOptions): Tool[] {
 export function createReadOnlyTools(cwd: string, options?: ToolsOptions): Tool[] {
 	return [
 		createReadTool(cwd, options?.read),
-		createGrepTool(cwd, options?.grep),
+		createAstGrepTool(cwd, options?.astGrep),
 		createFindTool(cwd, options?.find),
 		createLsTool(cwd, options?.ls),
 	];
@@ -217,6 +232,7 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		powershell: createPowerShellTool(cwd, options?.powershell),
 		edit: createEditTool(cwd, options?.edit),
 		write: createWriteTool(cwd, options?.write),
+		ast_grep: createAstGrepTool(cwd, options?.astGrep),
 		grep: createGrepTool(cwd, options?.grep),
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),

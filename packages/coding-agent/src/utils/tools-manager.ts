@@ -24,7 +24,7 @@ interface ToolConfig {
 	binaryName: string; // Name of the binary inside the archive
 	systemBinaryNames?: string[]; // Alternative system command names to try before downloading
 	tagPrefix: string; // Prefix for tags (e.g., "v" for v1.0.0, "" for 1.0.0)
-	getAssetName: (version: string, target: string) => string;
+	getAssetName: (version: string, plat: string, architecture: string) => string | null;
 }
 
 // Map Node's platform/arch to the release target suffix shared by fd and ripgrep.
@@ -46,16 +46,37 @@ const TOOLS: Record<string, ToolConfig> = {
 		binaryName: "fd",
 		systemBinaryNames: ["fd", "fdfind"],
 		tagPrefix: "v",
-		getAssetName: (version, target) => `fd-v${version}-${target}`,
+		getAssetName: (version, plat, architecture) => {
+			const target = getReleaseTarget(plat, architecture);
+			return target ? `fd-v${version}-${target}` : null;
+		},
 	},
 	rg: {
 		name: "ripgrep",
 		repo: "BurntSushi/ripgrep",
 		binaryName: "rg",
 		tagPrefix: "",
-		getAssetName: (version, target) => `ripgrep-${version}-${target}`,
+		getAssetName: (version, plat, architecture) => {
+			const target = getReleaseTarget(plat, architecture);
+			return target ? `ripgrep-${version}-${target}` : null;
+		},
+	},
+	"ast-grep": {
+		name: "ast-grep",
+		repo: "ast-grep/ast-grep",
+		binaryName: "ast-grep",
+		tagPrefix: "",
+		getAssetName: (_version, plat, architecture) => {
+			const archStr = architecture === "arm64" ? "aarch64" : "x86_64";
+			if (plat === "darwin") return `app-${archStr}-apple-darwin.zip`;
+			if (plat === "linux") return `app-${archStr}-unknown-linux-gnu.zip`;
+			if (plat === "win32") return `app-${archStr}-pc-windows-msvc.zip`;
+			return null;
+		},
 	},
 };
+
+export type ManagedTool = "fd" | "rg" | "ast-grep";
 
 // Check if a command exists in PATH by trying to run it
 function commandExists(cmd: string): boolean {
@@ -69,7 +90,7 @@ function commandExists(cmd: string): boolean {
 }
 
 // Get the path to a tool (system-wide or in our tools dir)
-export function getToolPath(tool: "fd" | "rg"): string | null {
+export function getToolPath(tool: ManagedTool): string | null {
 	const config = TOOLS[tool];
 	if (!config) return null;
 
@@ -244,21 +265,20 @@ function extractZipArchive(archivePath: string, extractDir: string, assetName: s
 }
 
 // Download and install a tool
-async function downloadTool(tool: "fd" | "rg"): Promise<string> {
+async function downloadTool(tool: ManagedTool): Promise<string> {
 	const config = TOOLS[tool];
 	if (!config) throw new Error(`Unknown tool: ${tool}`);
 
 	const plat = platform();
 	const architecture = arch();
-	const target = getReleaseTarget(plat, architecture);
-	if (!target) {
-		throw new Error(`Unsupported platform: ${plat}/${architecture}`);
-	}
 
 	// fd is pinned on darwin/x64, so skip the version lookup there.
 	const version =
 		tool === "fd" && plat === "darwin" && architecture === "x64" ? "10.3.0" : await getLatestVersion(config.repo);
-	const assetName = config.getAssetName(version, target);
+	const assetName = config.getAssetName(version, plat, architecture);
+	if (!assetName) {
+		throw new Error(`Unsupported platform: ${plat}/${architecture}`);
+	}
 
 	// Create tools directory
 	mkdirSync(TOOLS_DIR, { recursive: true });
@@ -322,6 +342,7 @@ async function downloadTool(tool: "fd" | "rg"): Promise<string> {
 const TERMUX_PACKAGES: Record<string, string> = {
 	fd: "fd",
 	rg: "ripgrep",
+	"ast-grep": "ast-grep",
 };
 
 export interface ToolStatus {
@@ -335,7 +356,7 @@ export interface ToolStatus {
  * Returns the tool path, or undefined if unavailable.
  */
 export async function ensureTool(
-	tool: "fd" | "rg",
+	tool: ManagedTool,
 	onStatus?: (status: ToolStatus) => void,
 ): Promise<string | undefined> {
 	const existingPath = getToolPath(tool);
