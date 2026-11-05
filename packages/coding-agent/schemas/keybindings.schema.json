@@ -235,6 +235,42 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Toggle tool output"
     },
+    "app.dialog.select1": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Dialog: select choice 1"
+    },
+    "app.dialog.select2": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Dialog: select choice 2"
+    },
+    "app.dialog.select3": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Dialog: select choice 3"
+    },
+    "app.dialog.select4": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Dialog: select choice 4"
+    },
+    "app.dialog.select5": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Dialog: select choice 5"
+    },
+    "app.dialog.select6": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Dialog: select choice 6"
+    },
+    "app.dialog.select7": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Dialog: select choice 7"
+    },
+    "app.dialog.select8": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Dialog: select choice 8"
+    },
+    "app.dialog.select9": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Dialog: select choice 9"
+    },
     "app.thinking.toggle": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Toggle thinking blocks"

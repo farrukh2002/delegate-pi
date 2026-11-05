@@ -96,6 +96,27 @@ The dedicated history actions browse prompt history regardless of cursor positio
 | `tui.select.confirm` | `enter` | Confirm selection |
 | `tui.select.cancel` | `escape`, `ctrl+c` | Cancel selection |
 
+#### Dialog choices
+
+Choice and confirmation dialogs support immediate selection with `1` through `9`.
+The number for **Other — type your answer** opens the text field. Use arrow keys and Enter
+for choices after the first nine. These shortcuts do not apply inside text fields.
+
+| Keybinding id | Default | Description |
+|---|---|---|
+| `app.dialog.select1` | `1` | Select choice 1 |
+| `app.dialog.select2` | `2` | Select choice 2 |
+| `app.dialog.select3` | `3` | Select choice 3 |
+| `app.dialog.select4` | `4` | Select choice 4 |
+| `app.dialog.select5` | `5` | Select choice 5 |
+| `app.dialog.select6` | `6` | Select choice 6 |
+| `app.dialog.select7` | `7` | Select choice 7 |
+| `app.dialog.select8` | `8` | Select choice 8 |
+| `app.dialog.select9` | `9` | Select choice 9 |
+
+Remapping an action changes the shortcut shown beside that choice. An empty list disables
+its shortcut, but the choice remains available through navigation and Enter.
+
 #### Fullscreen
 
 In fullscreen mode, these actions control the transcript and take precedence over editor actions using the same key. While an overlay or a scrollable list such as autocomplete, `/settings`, or the model selector has focus, the scrolling and prompt-jump actions go to it instead of the transcript, so `tui.select.pageUp` and `tui.select.pageDown` move the list selection. Transcript search actions keep working.
