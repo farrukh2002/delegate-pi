@@ -1,4 +1,5 @@
 import { compare, valid } from "semver";
+import { RELEASE_REPOSITORY } from "../config.ts";
 import { fetchWithRetry } from "./management-http.ts";
 import { getPiUserAgent } from "./pi-user-agent.ts";
 
@@ -53,6 +54,7 @@ export async function getLatestPiRelease(
 	options: { timeoutMs?: number; retry?: boolean } = {},
 ): Promise<LatestPiRelease | undefined> {
 	if (process.env.PI_OFFLINE) return undefined;
+	if (RELEASE_REPOSITORY) return getLatestRepositoryRelease(RELEASE_REPOSITORY, currentVersion, options);
 
 	const response = await fetchWithRetry(
 		LATEST_VERSION_URL,
@@ -85,6 +87,31 @@ export async function getLatestPiRelease(
 		packageName,
 		...(note ? { note } : {}),
 	};
+}
+
+async function getLatestRepositoryRelease(
+	repository: string,
+	currentVersion: string,
+	options: { timeoutMs?: number; retry?: boolean },
+): Promise<LatestPiRelease | undefined> {
+	const response = await fetchWithRetry(
+		`https://api.github.com/repos/${repository}/releases/latest`,
+		{
+			headers: {
+				"User-Agent": getPiUserAgent(currentVersion),
+				accept: "application/vnd.github+json",
+			},
+		},
+		{
+			maxRetries: options.retry ? 2 : 0,
+			timeoutMs: options.timeoutMs ?? DEFAULT_VERSION_CHECK_TIMEOUT_MS,
+		},
+	);
+	if (!response.ok) return undefined;
+	const data = (await response.json()) as { tag_name?: unknown };
+	if (typeof data.tag_name !== "string") return undefined;
+	const version = data.tag_name.trim().replace(/^v/, "");
+	return version ? { version } : undefined;
 }
 
 export async function getLatestPiVersion(
