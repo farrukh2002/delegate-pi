@@ -102,6 +102,26 @@ describe("fork self-update guard", () => {
 	});
 });
 
+describe("delegate runtime packaging", () => {
+	it("packs runtime assets and excludes runtime data", () => {
+		const output = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+			cwd: packageDir,
+			encoding: "utf8",
+			timeout: 60000,
+		});
+		const files: string[] = JSON.parse(output)[0].files.map((entry: { path: string }) => entry.path);
+
+		expect(files).toContain("delegate/LICENSE");
+		expect(files).toContain("delegate/core/core.ts");
+		expect(files).toContain("delegate/core/delegate.mjs");
+		expect(files.some((path) => path.startsWith("delegate/core/bridge/"))).toBe(true);
+		expect(files.some((path) => path.startsWith("delegate/agents/"))).toBe(true);
+		expect(files.some((path) => path.startsWith("delegate/core/projects/"))).toBe(false);
+		expect(files.some((path) => path.startsWith("delegate/core/tasks/"))).toBe(false);
+		expect(files.some((path) => path.startsWith("delegate/tests/"))).toBe(false);
+	});
+});
+
 describe("delegate-pi dev launcher", () => {
 	it("runs the existing bundle from another cwd", () => {
 		if (!existsSync(bundle)) {
