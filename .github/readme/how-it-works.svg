@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="853" height="476" viewBox="0 0 853 476" role="img" aria-label="How delegate-pi runs agents: you ask, the model delegates tasks, each agent runs in its own sandbox and scope, then you review and accept or undo">
+<style>
+@font-face{font-family:"Maple Mono";font-weight:400;src:url(data:font/woff2;base64,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) format("woff2")}
+@font-face{font-family:"Maple Mono";font-weight:700;src:url(data:font/woff2;base64,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) format("woff2")}
+text{font-family:"Maple Mono",ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:13px;white-space:pre}
+.spin{transform-box:fill-box;transform-origin:50% 50%;animation:spin 2.4s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes scene{0%{opacity:0}2%,95%{opacity:1}99%,100%{opacity:0}}
+.scene{animation:scene 14s linear infinite}
+@keyframes step0{0%,0%{opacity:0}1%,12%{opacity:1}13.5%,100%{opacity:0}}
+.step0{animation:step0 14s linear infinite;}
+@keyframes step1{0%,11.5%{opacity:0}13%,24%{opacity:1}25.5%,100%{opacity:0}}
+.step1{animation:step1 14s linear infinite;}
+@keyframes step2{0%,23.5%{opacity:0}25%,70%{opacity:1}71.5%,100%{opacity:0}}
+.step2{animation:step2 14s linear infinite;}
+@keyframes step3{0%,69.5%{opacity:0}71%,100%{opacity:1}}
+.step3{animation:step3 14s linear infinite;}
+@keyframes type{0%,2%{transform:translateX(0)}10%,100%{transform:translateX(199px)}}
+.type{animation:type 14s linear infinite;}
+@keyframes down{0%,8.5%{opacity:0}10%,100%{opacity:1}}
+@keyframes call{0%,10.5%{opacity:0}12%,100%{opacity:1}}
+.down{animation:down 14s linear infinite;}
+.call{animation:call 14s linear infinite;}
+@keyframes t0line{0%,12%{stroke-dashoffset:1}18%,100%{stroke-dashoffset:0}}
+@keyframes t0box{0%,12.5%{opacity:0}14%,100%{opacity:1}}
+@keyframes t0wait{0%,12.5%{opacity:0}14%,26%{opacity:1}27.5%,100%{opacity:0}}
+@keyframes t0work{0%,25.5%{opacity:0}27%,52%{opacity:1}53.5%,100%{opacity:0}}
+@keyframes t0ok{0%,51.5%{opacity:0}53%,100%{opacity:1}}
+@keyframes t0bar{0%,26%{transform:scaleX(0)}52%,100%{transform:scaleX(1)}}
+.t0line{animation:t0line 14s linear infinite;}
+.t0box{animation:t0box 14s linear infinite;}
+.t0wait{animation:t0wait 14s linear infinite;}
+.t0work{animation:t0work 14s linear infinite;}
+.t0ok{animation:t0ok 14s linear infinite;}
+.t0bar{animation:t0bar 14s linear infinite;transform-box:fill-box;transform-origin:0 50%}
+@keyframes t1line{0%,15%{stroke-dashoffset:1}21%,100%{stroke-dashoffset:0}}
+@keyframes t1box{0%,15.5%{opacity:0}17%,100%{opacity:1}}
+@keyframes t1wait{0%,15.5%{opacity:0}17%,28%{opacity:1}29.5%,100%{opacity:0}}
+@keyframes t1work{0%,27.5%{opacity:0}29%,66%{opacity:1}67.5%,100%{opacity:0}}
+@keyframes t1ok{0%,65.5%{opacity:0}67%,100%{opacity:1}}
+@keyframes t1bar{0%,28%{transform:scaleX(0)}66%,100%{transform:scaleX(1)}}
+.t1line{animation:t1line 14s linear infinite;}
+.t1box{animation:t1box 14s linear infinite;}
+.t1wait{animation:t1wait 14s linear infinite;}
+.t1work{animation:t1work 14s linear infinite;}
+.t1ok{animation:t1ok 14s linear infinite;}
+.t1bar{animation:t1bar 14s linear infinite;transform-box:fill-box;transform-origin:0 50%}
+@keyframes t2line{0%,18%{stroke-dashoffset:1}24%,100%{stroke-dashoffset:0}}
+@keyframes t2box{0%,18.5%{opacity:0}20%,100%{opacity:1}}
+@keyframes t2wait{0%,18.5%{opacity:0}20%,30%{opacity:1}31.5%,100%{opacity:0}}
+@keyframes t2work{0%,29.5%{opacity:0}31%,60%{opacity:1}61.5%,100%{opacity:0}}
+@keyframes t2ok{0%,59.5%{opacity:0}61%,100%{opacity:1}}
+@keyframes t2bar{0%,30%{transform:scaleX(0)}60%,100%{transform:scaleX(1)}}
+.t2line{animation:t2line 14s linear infinite;}
+.t2box{animation:t2box 14s linear infinite;}
+.t2wait{animation:t2wait 14s linear infinite;}
+.t2work{animation:t2work 14s linear infinite;}
+.t2ok{animation:t2ok 14s linear infinite;}
+.t2bar{animation:t2bar 14s linear infinite;transform-box:fill-box;transform-origin:0 50%}
+@keyframes deny{0%,36.5%{opacity:0}38%,50%{opacity:1}51.5%,100%{opacity:0}}
+.deny{animation:deny 14s linear infinite;}
+@keyframes report{0%,70.5%{opacity:0}72%,100%{opacity:1}}
+@keyframes accept{0%,82%{fill-opacity:0}85%,100%{fill-opacity:0.25}}
+@keyframes kept{0%,84.5%{opacity:0}86%,100%{opacity:1}}
+.report{animation:report 14s linear infinite;}
+.accept{animation:accept 14s linear infinite;}
+.kept{animation:kept 14s linear infinite;}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+<rect width="853" height="476" rx="16" fill="#0d1117"/>
+<rect x="0.5" y="0.5" width="852" height="475" rx="16" fill="none" stroke="#30363d"/>
+<g class="scene">
+<rect x="24" y="22" width="190" height="34" rx="17" fill="#161b22" stroke="#30363d"/>
+<rect class="step0" x="24" y="22" width="190" height="34" rx="17" fill="#1f6feb" fill-opacity="0.18" stroke="#58a6ff"/>
+<circle cx="44" cy="39" r="10" fill="#21262d"/><text x="44" y="43.5" fill="#58a6ff" text-anchor="middle" font-weight="700">1</text>
+<text x="62" y="43.5" fill="#c9d1d9">ask</text>
+<rect x="226" y="22" width="190" height="34" rx="17" fill="#161b22" stroke="#30363d"/>
+<rect class="step1" x="226" y="22" width="190" height="34" rx="17" fill="#1f6feb" fill-opacity="0.18" stroke="#58a6ff"/>
+<circle cx="246" cy="39" r="10" fill="#21262d"/><text x="246" y="43.5" fill="#58a6ff" text-anchor="middle" font-weight="700">2</text>
+<text x="264" y="43.5" fill="#c9d1d9">delegate</text>
+<rect x="428" y="22" width="190" height="34" rx="17" fill="#161b22" stroke="#30363d"/>
+<rect class="step2" x="428" y="22" width="190" height="34" rx="17" fill="#1f6feb" fill-opacity="0.18" stroke="#58a6ff"/>
+<circle cx="448" cy="39" r="10" fill="#21262d"/><text x="448" y="43.5" fill="#58a6ff" text-anchor="middle" font-weight="700">3</text>
+<text x="466" y="43.5" fill="#c9d1d9">run in sandboxes</text>
+<rect x="630" y="22" width="190" height="34" rx="17" fill="#161b22" stroke="#30363d"/>
+<rect class="step3" x="630" y="22" width="190" height="34" rx="17" fill="#1f6feb" fill-opacity="0.18" stroke="#58a6ff"/>
+<circle cx="650" cy="39" r="10" fill="#21262d"/><text x="650" y="43.5" fill="#58a6ff" text-anchor="middle" font-weight="700">4</text>
+<text x="668" y="43.5" fill="#c9d1d9">review</text>
+<rect x="24" y="88" width="270" height="76" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="40" y="112" fill="#8b949e" style="font-size:12px">you</text>
+<text x="40" y="142" fill="#e6edf3"><tspan fill="#58a6ff">› </tspan>fix the footer, add tests</text>
+<clipPath id="you"><rect x="25" y="89" width="268" height="74" rx="9"/></clipPath>
+<g clip-path="url(#you)"><rect class="type" x="56" y="126" width="203" height="24" fill="#161b22"/></g>
+<path class="down" d="M159 164 V200" stroke="#58a6ff" stroke-width="2" stroke-dasharray="4 4"/>
+<rect x="24" y="200" width="270" height="124" rx="10" fill="#161b22" stroke="#30363d"/>
+<g transform="translate(42,220)"><g class="pet" shape-rendering="crispEdges"><rect x="14" y="0" width="7.5" height="7.5" fill="#3fb950"/><rect x="21" y="0" width="7.5" height="7.5" fill="#3fb950"/><rect x="28" y="0" width="7.5" height="7.5" fill="#3fb950"/><rect x="35" y="0" width="7.5" height="7.5" fill="#3fb950"/><rect x="7" y="7" width="7.5" height="7.5" fill="#3fb950"/><rect x="14" y="7" width="7.5" height="7.5" fill="#7ee787"/><rect x="21" y="7" width="7.5" height="7.5" fill="#3fb950"/><rect x="28" y="7" width="7.5" height="7.5" fill="#3fb950"/><rect x="35" y="7" width="7.5" height="7.5" fill="#3fb950"/><rect x="42" y="7" width="7.5" height="7.5" fill="#3fb950"/><rect x="0" y="14" width="7.5" height="7.5" fill="#3fb950"/><rect x="7" y="14" width="7.5" height="7.5" fill="#3fb950"/><rect x="14" y="14" width="7.5" height="7.5" fill="#3fb950"/><rect x="21" y="14" width="7.5" height="7.5" fill="#3fb950"/><rect x="28" y="14" width="7.5" height="7.5" fill="#3fb950"/><rect x="35" y="14" width="7.5" height="7.5" fill="#3fb950"/><rect x="42" y="14" width="7.5" height="7.5" fill="#3fb950"/><rect x="49" y="14" width="7.5" height="7.5" fill="#3fb950"/><rect x="0" y="21" width="7.5" height="7.5" fill="#3fb950"/><rect x="7" y="21" width="7.5" height="7.5" fill="#3fb950"/><rect x="14" y="21" width="7.5" height="7.5" fill="#3fb950"/><rect x="21" y="21" width="7.5" height="7.5" fill="#3fb950"/><rect x="28" y="21" width="7.5" height="7.5" fill="#3fb950"/><rect x="35" y="21" width="7.5" height="7.5" fill="#3fb950"/><rect x="42" y="21" width="7.5" height="7.5" fill="#3fb950"/><rect x="49" y="21" width="7.5" height="7.5" fill="#3fb950"/><rect x="0" y="28" width="7.5" height="7.5" fill="#3fb950"/><rect x="7" y="28" width="7.5" height="7.5" fill="#3fb950"/><rect x="14" y="28" width="7.5" height="7.5" fill="#3fb950"/><rect x="21" y="28" width="7.5" height="7.5" fill="#3fb950"/><rect x="28" y="28" width="7.5" height="7.5" fill="#3fb950"/><rect x="35" y="28" width="7.5" height="7.5" fill="#3fb950"/><rect x="42" y="28" width="7.5" height="7.5" fill="#3fb950"/><rect x="49" y="28" width="7.5" height="7.5" fill="#3fb950"/><rect x="7" y="35" width="7.5" height="7.5" fill="#3fb950"/><rect x="14" y="35" width="7.5" height="7.5" fill="#3fb950"/><rect x="21" y="35" width="7.5" height="7.5" fill="#3fb950"/><rect x="28" y="35" width="7.5" height="7.5" fill="#3fb950"/><rect x="35" y="35" width="7.5" height="7.5" fill="#3fb950"/><rect x="42" y="35" width="7.5" height="7.5" fill="#3fb950"/><g class="eyes"><rect class="eye" x="14" y="14" width="7" height="7" fill="#0d1117"/><rect class="eye" x="35" y="14" width="7" height="7" fill="#0d1117"/></g></g></g>
+<text x="112" y="236" fill="#e6edf3" font-weight="700">delegate-pi</text>
+<text x="112" y="256" fill="#8b949e" style="font-size:12px">the model you talk to</text>
+<g class="call"><rect x="40" y="280" width="238" height="28" rx="6" fill="#0d1117" stroke="#30363d"/><text x="52" y="299" fill="#d2a8ff">delegate<tspan fill="#8b949e">(</tspan><tspan fill="#e6edf3">3 tasks</tspan><tspan fill="#8b949e">)</tspan></text></g>
+<path class="t0line" d="M294 262 C 326 262, 318 128, 352 128" fill="none" stroke="#30363d" stroke-width="2" pathLength="1" stroke-dasharray="1"/>
+<g class="t0box">
+<rect x="352" y="88" width="477" height="82" rx="10" fill="#0f141a" stroke="#3fb950" stroke-opacity="0.55" stroke-dasharray="6 5"/>
+<text x="815" y="106" fill="#3fb950" fill-opacity="0.8" text-anchor="end" style="font-size:11px">sandbox</text>
+<text class="t0wait" x="370" y="120" fill="#8b949e">◌</text>
+<g class="t0work"><text class="spin" x="370" y="120" fill="#58a6ff">✻</text></g>
+<text class="t0ok" x="370" y="120" fill="#3fb950">✓</text>
+<text x="392" y="120" fill="#e6edf3" font-weight="700">pi-scout<tspan fill="#8b949e" font-weight="400">  pi</tspan></text>
+<rect x="370" y="134" width="140.2" height="24" rx="12" fill="#161b22" stroke="#30363d"/>
+<text x="382" y="150.5" fill="#8b949e" style="font-size:12px">scope <tspan fill="#d29922">read-only</tspan></text>
+<rect x="572" y="146" width="237" height="4" rx="2" fill="#21262d"/>
+<rect class="t0bar" x="572" y="146" width="237" height="4" rx="2" fill="#bc8cff"/>
+<text class="t0work" x="572" y="134" fill="#8b949e" style="font-size:12px">read 14 files</text>
+</g>
+<path class="t1line" d="M294 262 C 326 262, 318 234, 352 234" fill="none" stroke="#30363d" stroke-width="2" pathLength="1" stroke-dasharray="1"/>
+<g class="t1box">
+<rect x="352" y="194" width="477" height="82" rx="10" fill="#0f141a" stroke="#3fb950" stroke-opacity="0.55" stroke-dasharray="6 5"/>
+<text x="815" y="212" fill="#3fb950" fill-opacity="0.8" text-anchor="end" style="font-size:11px">sandbox</text>
+<text class="t1wait" x="370" y="226" fill="#8b949e">◌</text>
+<g class="t1work"><text class="spin" x="370" y="226" fill="#58a6ff">✻</text></g>
+<text class="t1ok" x="370" y="226" fill="#3fb950">✓</text>
+<text x="392" y="226" fill="#e6edf3" font-weight="700">cx-worker<tspan fill="#8b949e" font-weight="400">  Codex</tspan></text>
+<rect x="370" y="240" width="132.4" height="24" rx="12" fill="#161b22" stroke="#30363d"/>
+<text x="382" y="256.5" fill="#8b949e" style="font-size:12px">scope <tspan fill="#3fb950">src/core</tspan></text>
+<rect x="572" y="252" width="237" height="4" rx="2" fill="#21262d"/>
+<rect class="t1bar" x="572" y="252" width="237" height="4" rx="2" fill="#58a6ff"/>
+<text class="t1work" x="572" y="240" fill="#8b949e" style="font-size:12px">edit src/core/footer.ts</text>
+</g>
+<path class="t2line" d="M294 262 C 326 262, 318 340, 352 340" fill="none" stroke="#30363d" stroke-width="2" pathLength="1" stroke-dasharray="1"/>
+<g class="t2box">
+<rect x="352" y="300" width="477" height="82" rx="10" fill="#0f141a" stroke="#3fb950" stroke-opacity="0.55" stroke-dasharray="6 5"/>
+<text x="815" y="318" fill="#3fb950" fill-opacity="0.8" text-anchor="end" style="font-size:11px">sandbox</text>
+<text class="t2wait" x="370" y="332" fill="#8b949e">◌</text>
+<g class="t2work"><text class="spin" x="370" y="332" fill="#58a6ff">✻</text></g>
+<text class="t2ok" x="370" y="332" fill="#3fb950">✓</text>
+<text x="392" y="332" fill="#e6edf3" font-weight="700">cmd-worker<tspan fill="#8b949e" font-weight="400">  Command Code</tspan></text>
+<rect x="370" y="346" width="109" height="24" rx="12" fill="#161b22" stroke="#30363d"/>
+<text x="382" y="362.5" fill="#8b949e" style="font-size:12px">scope <tspan fill="#3fb950">test/</tspan></text>
+<rect x="572" y="358" width="237" height="4" rx="2" fill="#21262d"/>
+<rect class="t2bar" x="572" y="358" width="237" height="4" rx="2" fill="#39c5cf"/>
+<text class="t2work" x="572" y="346" fill="#8b949e" style="font-size:12px">write test/footer.test.ts</text>
+</g>
+<g class="deny"><rect x="564" y="225" width="252" height="22" rx="6" fill="#2b1719" stroke="#f85149" stroke-opacity="0.6"/><text x="574" y="240" fill="#ff7b72" style="font-size:12px">✗ write README.md: outside scope</text></g>
+<g class="report">
+<rect x="24" y="404" width="805" height="52" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="42" y="435" fill="#8b949e">report</text>
+<text x="104" y="435" fill="#e6edf3"><tspan fill="#3fb950">✓</tspan> pi-scout  <tspan fill="#3fb950">✓</tspan> cx-worker <tspan fill="#3fb950">+38 −12</tspan>  <tspan fill="#3fb950">✓</tspan> cmd-worker <tspan fill="#3fb950">+54</tspan></text>
+<rect class="accept" x="659" y="416" width="78" height="28" rx="14" fill="#3fb950" stroke="#3fb950"/>
+<text x="698" y="435" fill="#3fb950" text-anchor="middle">accept</text>
+<rect x="745" y="416" width="66" height="28" rx="14" fill="none" stroke="#30363d"/>
+<text x="778" y="435" fill="#8b949e" text-anchor="middle">undo</text>
+<text class="kept" x="645" y="435" fill="#3fb950" text-anchor="end" style="font-size:12px">changes kept</text>
+</g>
+</g>
+</svg>

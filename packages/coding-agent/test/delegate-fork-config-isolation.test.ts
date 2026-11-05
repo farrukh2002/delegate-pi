@@ -21,7 +21,7 @@ const OFFICIAL_ENV_SESSION_DIR = "PI_CODING_AGENT_SESSION_DIR";
 
 interface PackageManifest {
 	name: string;
-	piConfig: { name?: string; configDir?: string };
+	piConfig: { name?: string; configDir?: string; repository?: string };
 	bin: Record<string, string>;
 }
 
@@ -57,7 +57,11 @@ describe("delegate fork config isolation", () => {
 	it("rebrands the command and config directory without renaming the package", () => {
 		const manifest = readManifest();
 		expect(manifest.name).toBe(OFFICIAL_PACKAGE_NAME);
-		expect(manifest.piConfig).toEqual({ name: "delegate-pi", configDir: ".delegate-pi" });
+		expect(manifest.piConfig).toEqual({
+			name: "delegate-pi",
+			configDir: ".delegate-pi",
+			repository: "farrukh2002/delegate-pi",
+		});
 		expect(manifest.bin).toEqual({ "delegate-pi": "dist/bundle/cli.js" });
 		expect(manifest.bin.pi).toBeUndefined();
 	});
