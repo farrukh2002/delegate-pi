@@ -100,6 +100,7 @@ const APP_KEYBINDINGS = {
 		defaultKeys: ["enter", "space"],
 		description: "Usage screen: show model detail",
 	},
+	"app.stats.close": { defaultKeys: "escape", description: "Stats screen: close" },
 	"app.session.new": { defaultKeys: [], description: "Start a new session" },
 	"app.session.tree": { defaultKeys: [], description: "Open session tree" },
 	"app.session.fork": { defaultKeys: [], description: "Fork current session" },
