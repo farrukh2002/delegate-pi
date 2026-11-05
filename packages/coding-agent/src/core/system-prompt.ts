@@ -61,7 +61,7 @@ export function normalizeBuildSystemPromptOptions(input: BuildSystemPromptOption
 	return {
 		customPrompt: input.customPrompt,
 		forceSystemPrompt: input.forceSystemPrompt,
-		selectedTools: [...(input.selectedTools ?? ["read", "bash", "edit", "write"])],
+		selectedTools: [...(input.selectedTools ?? ["read", "bash", "edit", "write", "ast_grep"])],
 		hiddenTools: [...(input.hiddenTools ?? [])],
 		toolSnippets: { ...(input.toolSnippets ?? {}) },
 		toolGuidelines: Object.fromEntries(
@@ -110,6 +110,8 @@ function buildRules(
 			addRule("Use bash or PowerShell for file operations like listing, searching, and finding files");
 		} else if (hasPowerShell) {
 			addRule("Use PowerShell for file operations like listing, searching, and finding files");
+		} else if (selectedTools.includes("ast_grep")) {
+			addRule("Use bash for file operations like ls and find");
 		} else {
 			addRule("Use bash for file operations like ls, rg, find");
 		}

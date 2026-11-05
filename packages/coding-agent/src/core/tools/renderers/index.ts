@@ -8,6 +8,7 @@
 
 import type { ToolRenderers } from "../../extensions/types.ts";
 import type { ToolName } from "../index.ts";
+import { astGrepRenderers } from "./ast-grep.ts";
 import { createShellRenderers } from "./bash.ts";
 import { editRenderers } from "./edit.ts";
 import { findRenderers } from "./find.ts";
@@ -19,6 +20,7 @@ import { writeRenderers } from "./write.ts";
 export type { ToolRenderers };
 
 export {
+	astGrepRenderers,
 	createShellRenderers,
 	editRenderers,
 	findRenderers,
@@ -36,6 +38,7 @@ export function createAllToolRenderers(): Record<ToolName, ToolRenderers> {
 		powershell: createShellRenderers("PS>"),
 		edit: editRenderers,
 		write: writeRenderers,
+		ast_grep: astGrepRenderers,
 		grep: grepRenderers,
 		find: findRenderers,
 		ls: lsRenderers,
