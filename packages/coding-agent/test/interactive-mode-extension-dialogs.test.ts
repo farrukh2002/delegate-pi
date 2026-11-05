@@ -1,5 +1,6 @@
-import { type Component, Container, Text } from "@earendil-works/pi-tui";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { type Component, Container, setKeybindings, Text } from "@earendil-works/pi-tui";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
@@ -65,6 +66,18 @@ function visible(context: DialogContext): string {
 
 describe("InteractiveMode extension dialogs", () => {
 	beforeAll(() => initTheme("dark"));
+	beforeEach(() => setKeybindings(new KeybindingsManager()));
+
+	it.each([
+		["1", true],
+		["2", false],
+	])("answers a confirmation with number key %s", async (key, expected) => {
+		const context = createContext();
+		const answer = context.showExtensionConfirm("Run command?", "Confirm this operation");
+		context.focused?.handleInput?.(key);
+		await expect(answer).resolves.toBe(expected);
+		expect(context.focused).toBe(context.editor);
+	});
 
 	// Regression for #11166: a second dialog replaced the first one and the first promise never settled.
 	it("shows the earlier confirm again after the later one is answered", async () => {

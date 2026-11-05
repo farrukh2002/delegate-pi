@@ -7,7 +7,19 @@ import { Container, getKeybindings, Spacer, Text, type TUI } from "@earendil-wor
 import { theme } from "../theme/theme.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { DynamicBorder } from "./dynamic-border.ts";
-import { keyHint, rawKeyHint } from "./keybinding-hints.ts";
+import { keyHint, keyText, rawKeyHint } from "./keybinding-hints.ts";
+
+const OPTION_KEYBINDINGS = [
+	"app.dialog.select1",
+	"app.dialog.select2",
+	"app.dialog.select3",
+	"app.dialog.select4",
+	"app.dialog.select5",
+	"app.dialog.select6",
+	"app.dialog.select7",
+	"app.dialog.select8",
+	"app.dialog.select9",
+] as const;
 
 export interface ExtensionSelectorOptions {
 	tui?: TUI;
@@ -95,9 +107,12 @@ export class ExtensionSelectorComponent extends Container {
 
 		for (let i = startIndex; i < endIndex; i++) {
 			const isSelected = i === this.selectedIndex;
+			const binding = OPTION_KEYBINDINGS[i];
+			const shortcut = binding ? keyText(binding) : "";
+			const label = `${shortcut ? `${shortcut}. ` : ""}${this.options[i]}`;
 			const text = isSelected
-				? theme.fg("accent", "→ ") + theme.fg("accent", this.options[i])
-				: `  ${theme.fg("text", this.options[i])}`;
+				? theme.fg("accent", "→ ") + theme.fg("accent", label)
+				: `  ${theme.fg("text", label)}`;
 			this.listContainer.addChild(new Text(text, 1, 0));
 		}
 
@@ -122,6 +137,10 @@ export class ExtensionSelectorComponent extends Container {
 			if (selected) this.onSelectCallback(selected);
 		} else if (kb.matches(keyData, "tui.select.cancel")) {
 			this.onCancelCallback();
+		} else {
+			const index = OPTION_KEYBINDINGS.findIndex((binding) => kb.matches(keyData, binding));
+			const selected = this.options[index];
+			if (selected !== undefined) this.onSelectCallback(selected);
 		}
 	}
 
