@@ -713,6 +713,32 @@
       ],
       "default": "fullscreen"
     },
+    "accent": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "theme"
+        },
+        {
+          "type": "string",
+          "const": "yellow"
+        },
+        {
+          "type": "string",
+          "const": "green"
+        },
+        {
+          "type": "string",
+          "const": "orange"
+        },
+        {
+          "type": "string",
+          "const": "blue"
+        }
+      ],
+      "description": "Accent color for every theme. \"theme\" keeps the color the theme defines.",
+      "default": "theme"
+    },
     "fullscreenExitOutput": {
       "anyOf": [
         {

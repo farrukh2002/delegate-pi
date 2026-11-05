@@ -39,6 +39,10 @@
       },
       "description": "Reusable color variables"
     },
+    "canvas": {
+      "$ref": "#/$defs/ColorValue",
+      "description": "Terminal background color painted while this theme is active; omit to keep the terminal default"
+    },
     "colors": {
       "type": "object",
       "required": [

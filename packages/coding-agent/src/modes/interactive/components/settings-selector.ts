@@ -15,6 +15,7 @@ import {
 import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
 import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
 import {
+	type AccentSettingValue,
 	CACHE_WARMING_MODES,
 	type CacheWarmingMode,
 	type DefaultProjectTrust,
@@ -26,6 +27,7 @@ import {
 	type WarningSettings,
 } from "../../../core/settings-manager.ts";
 import {
+	ACCENT_NAMES,
 	getSettingsListTheme,
 	parseAutoThemeSetting,
 	SYSTEM_THEME_NAME,
@@ -96,6 +98,7 @@ export interface SettingsConfig {
 	clearOnShrink: boolean;
 	showTerminalProgress: boolean;
 	tuiMode: TuiMode;
+	accent: AccentSettingValue;
 	fullscreenExitOutput: FullscreenExitOutput;
 	fullscreenScrollbar: ScrollViewScrollbar;
 	fullscreenCopyOnSelect: boolean;
@@ -119,6 +122,7 @@ export interface SettingsCallbacks {
 	onModelThinkingLevelChange: (provider: string, modelId: string, level: ThinkingLevel) => void;
 	onModelThinkingLevelRemove: (provider: string, modelId: string) => void;
 	onThemeChange: (theme: string) => void;
+	onAccentChange: (accent: AccentSettingValue) => void;
 	onThemePreview?: (theme: string) => void;
 	onHideThinkingBlockChange: (hidden: boolean) => void;
 	onMermaidRenderingModeChange: (mode: MermaidRenderingMode) => void;
@@ -723,6 +727,13 @@ export class SettingsSelectorComponent extends Container {
 				values: ["regular", "fullscreen"],
 			},
 			{
+				id: "accent",
+				label: "Accent color",
+				description: "Accent for every theme: logo, selection, borders and links",
+				currentValue: config.accent,
+				values: ["theme", ...ACCENT_NAMES],
+			},
+			{
 				id: "fullscreen-exit-output",
 				label: "Fullscreen exit output",
 				description: "Print the transcript or only a session resume hint when exiting fullscreen mode",
@@ -977,6 +988,9 @@ export class SettingsSelectorComponent extends Container {
 						break;
 					case "tui-mode":
 						callbacks.onTuiModeChange(newValue as TuiMode);
+						break;
+					case "accent":
+						callbacks.onAccentChange(newValue as AccentSettingValue);
 						break;
 					case "fullscreen-exit-output":
 						callbacks.onFullscreenExitOutputChange(newValue as FullscreenExitOutput);

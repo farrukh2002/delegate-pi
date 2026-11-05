@@ -428,6 +428,21 @@ export const SettingsSchema = Type.Object(
 				default: SETTINGS_DEFAULTS.tuiMode,
 			}),
 		),
+		accent: Type.Optional(
+			Type.Union(
+				[
+					Type.Literal("theme"),
+					Type.Literal("yellow"),
+					Type.Literal("green"),
+					Type.Literal("orange"),
+					Type.Literal("blue"),
+				],
+				{
+					description: 'Accent color for every theme. "theme" keeps the color the theme defines.',
+					default: SETTINGS_DEFAULTS.accent,
+				},
+			),
+		),
 		fullscreenExitOutput: Type.Optional(
 			Type.Union([Type.Literal("transcript"), Type.Literal("resume-hint")], {
 				description: "No effect in regular TUI mode.",
@@ -487,6 +502,7 @@ export type SessionShareDestination = NonNullable<SettingsInput["sessionShareDes
 export type PackageSource = Static<typeof PackageSourceSchema>;
 export type FullscreenExitOutput = NonNullable<SettingsInput["fullscreenExitOutput"]>;
 export type TuiMode = NonNullable<SettingsInput["tuiMode"]>;
+export type AccentSettingValue = NonNullable<SettingsInput["accent"]>;
 export type CacheWarmingMode = NonNullable<SettingsInput["cacheWarming"]>;
 export interface Settings extends Omit<SettingsInput, "queueMode" | "retry" | "skills" | "websockets"> {
 	retry?: RetrySettings;
