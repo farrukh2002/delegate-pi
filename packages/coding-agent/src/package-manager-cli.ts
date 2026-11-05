@@ -21,6 +21,7 @@ import {
 	detectInstallMethod,
 	getAgentDir,
 	getConfiguredSelfUpdateArgv,
+	getForkedSelfUpdateInstruction,
 	getPackageDir,
 	getSelfUpdateCommand,
 	getSelfUpdateUnavailableInstruction,
@@ -1132,6 +1133,17 @@ export async function handlePackageCommand(
 					}
 				}
 				if (updateTargetIncludesSelf(target)) {
+					const forkedSelfUpdate = getForkedSelfUpdateInstruction();
+					if (forkedSelfUpdate) {
+						console.error(
+							chalk.red(
+								`error: ${APP_NAME} does not self-update. It is a local fork, not the published ${PACKAGE_NAME}.`,
+							),
+						);
+						console.error(forkedSelfUpdate);
+						process.exitCode = 1;
+						return true;
+					}
 					const configuredSelfUpdateArgv = getConfiguredSelfUpdateArgv(
 						settingsManager.getGlobalSettings().selfUpdateCommand,
 					);
