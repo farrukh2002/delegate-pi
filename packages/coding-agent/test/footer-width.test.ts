@@ -167,9 +167,9 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		const statsLine = stripAnsi(footer.render(120)[1]);
+		const locationLine = stripAnsi(footer.render(120)[0]);
 
-		expect(statsLine).toContain("auto \u2022 high \u2192 gpt-5.6-luna \u2022 medium");
+		expect(locationLine).toContain("auto \u2022 high \u2192 gpt-5.6-luna \u2022 medium");
 	});
 
 	it("includes summary and tool result usage in the total cost", () => {
@@ -234,7 +234,35 @@ describe("FooterComponent width handling", () => {
 		const footer = new FooterComponent(session, createFooterData(1));
 
 		const statsLine = stripAnsi(footer.render(120)[1]);
-		expect(statsLine).toContain("CH25.0%");
+		expect(statsLine).toContain("cached 50   written 50   hit 25.0%");
+	});
+
+	it("labels the stats and draws a context bar", () => {
+		const session = createSession({
+			sessionName: "",
+			usage: { input: 1_200_000, output: 664_000, cacheRead: 0, cacheWrite: 0, cost: { total: 17.954 } },
+		});
+		const footer = new FooterComponent(session, createFooterData(1));
+		const [location, stats] = footer.render(120).map(stripAnsi);
+
+		expect(location.startsWith("/tmp/project  main")).toBe(true);
+		expect(location.endsWith("test-model")).toBe(true);
+		expect(stats).toBe(
+			"ctx \u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 12.3% of 200k auto   in 1.2M   out 664k   $17.954",
+		);
+	});
+
+	it("drops the least important stats first on narrow terminals", () => {
+		const session = createSession({
+			sessionName: "",
+			usage: { input: 1_200_000, output: 664_000, cacheRead: 89_000_000, cacheWrite: 0, cost: { total: 17.954 } },
+		});
+		const stats = stripAnsi(new FooterComponent(session, createFooterData(1)).render(50)[1]);
+
+		expect(visibleWidth(stats)).toBeLessThanOrEqual(50);
+		expect(stats).toContain("12.3%");
+		expect(stats).toContain("$17.954");
+		expect(stats).not.toContain("cached");
 	});
 
 	it("marks Kimi Coding costs as subscription estimates", () => {
@@ -251,14 +279,14 @@ describe("FooterComponent width handling", () => {
 		});
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		expect(stripAnsi(footer.render(120)[1])).toContain("$1.234 (sub)");
+		expect(stripAnsi(footer.render(120)[1])).toContain("$1.234 sub");
 	});
 
 	it("marks explicitly identified subscription auth", () => {
 		const session = createSession({ sessionName: "", provider: "anthropic", usingSubscription: true });
 		const footer = new FooterComponent(session, createFooterData(1));
 
-		expect(stripAnsi(footer.render(120)[1])).toContain("$0.000 (sub)");
+		expect(stripAnsi(footer.render(120)[1])).toContain("$0.000 sub");
 	});
 
 	it("does not mark generic OAuth sign-in as a subscription", () => {
@@ -277,6 +305,6 @@ describe("FooterComponent width handling", () => {
 		const stats = stripAnsi(footer.render(120)[1]);
 
 		expect(stats).toContain("$1.234");
-		expect(stats).not.toContain("(sub)");
+		expect(stats).not.toContain("sub");
 	});
 });
