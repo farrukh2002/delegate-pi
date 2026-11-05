@@ -263,6 +263,26 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Paste files on macOS, images, or text from clipboard"
     },
+    "app.delegate.focus": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Focus the Delegate task band"
+    },
+    "app.delegate.up": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Delegate band: previous task"
+    },
+    "app.delegate.down": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Delegate band: next task"
+    },
+    "app.delegate.toggle": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Delegate band: expand or collapse the task"
+    },
+    "app.delegate.escape": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Delegate band: leave focus"
+    },
     "app.session.new": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Start a new session"
