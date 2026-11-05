@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        type: choice
+        options: [dev, rc, stable]
+        default: dev
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CHANNEL: ${{ inputs.channel }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Pick the version
+        id: version
+        env:
+          RUN: ${{ github.run_number }}
+        run: |
+          base=$(node -p 'require("./packages/coding-agent/package.json").version')
+          case "$CHANNEL" in
+            stable) version="$base"; tag="v$base" ;;
+            rc) version="$base-rc.$RUN"; tag="v$version" ;;
+            dev) version="$base-dev.${GITHUB_SHA::7}"; tag="dev" ;;
+          esac
+          if [ "$CHANNEL" != dev ] && gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $tag already exists. Raise the version in packages/coding-agent/package.json first."
+            exit 1
+          fi
+          if [ "$version" != "$base" ]; then
+            node -e '
+              const fs = require("fs");
+              const file = "packages/coding-agent/package.json";
+              const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+              pkg.version = process.argv[1];
+              fs.writeFileSync(file, JSON.stringify(pkg, null, "\t") + "\n");
+            ' "$version"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: npm run build
+
+      - name: Package
+        run: node scripts/build-release.mjs
+
+      - name: Smoke test
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke"
+          tar -xzf release/delegate-pi.tar.gz -C "$RUNNER_TEMP/smoke"
+          node "$RUNNER_TEMP/smoke/delegate-pi/dist/bundle/cli.js" --version
+
+      - name: Publish
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          assets="release/delegate-pi.tar.gz release/delegate-pi.tar.gz.sha256"
+          case "$CHANNEL" in
+            stable) install="curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.sh | sh" ;;
+            *) install="curl -fsSL https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/install.sh | sh -s -- --channel $CHANNEL" ;;
+          esac
+          notes=$(printf 'delegate-pi %s (%s channel), built from %s.\n\nInstall:\n\n```sh\n%s\n```\n' "$VERSION" "$CHANNEL" "$GITHUB_SHA" "$install")
+          case "$CHANNEL" in
+            stable)
+              gh release create "$TAG" $assets --target "$GITHUB_SHA" --title "delegate-pi $VERSION" --notes "$notes" --latest
+              ;;
+            rc)
+              gh release create "$TAG" $assets --target "$GITHUB_SHA" --title "delegate-pi $VERSION" --notes "$notes" --prerelease --latest=false
+              ;;
+            dev)
+              gh release delete dev --yes --cleanup-tag >/dev/null 2>&1 || true
+              gh release create dev $assets --target "$GITHUB_SHA" --title "delegate-pi $VERSION" --notes "$notes" --prerelease --latest=false
+              ;;
+          esac

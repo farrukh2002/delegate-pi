@@ -9,6 +9,15 @@ import {
 } from "../src/utils/version-check.ts";
 import { allowNetwork } from "./test-network-env.ts";
 
+const release = vi.hoisted(() => ({ repository: undefined as string | undefined }));
+
+vi.mock("../src/config.ts", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../src/config.ts")>()),
+	get RELEASE_REPOSITORY() {
+		return release.repository;
+	},
+}));
+
 const originalSkipVersionCheck = process.env.PI_SKIP_VERSION_CHECK;
 
 beforeEach(() => {
@@ -16,6 +25,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	release.repository = undefined;
 	vi.unstubAllGlobals();
 	if (originalSkipVersionCheck === undefined) {
 		delete process.env.PI_SKIP_VERSION_CHECK;
@@ -127,5 +137,29 @@ describe("version checks", () => {
 
 		await expect(getLatestPiVersion("1.2.3")).resolves.toBe("1.2.4");
 		expect(fetchMock).toHaveBeenCalledOnce();
+	});
+
+	it("reads the latest GitHub release of a fork with a release repository", async () => {
+		release.repository = "owner/fork";
+		const fetchMock = vi.fn(async () => Response.json({ tag_name: "v1.3.0" }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(checkForNewPiVersion("1.2.3")).resolves.toEqual({ version: "1.3.0" });
+		expect(fetchMock).toHaveBeenCalledWith(
+			"https://api.github.com/repos/owner/fork/releases/latest",
+			expect.objectContaining({
+				headers: expect.objectContaining({ accept: "application/vnd.github+json" }),
+			}),
+		);
+	});
+
+	it("reports no fork update when the release repository has no release", async () => {
+		release.repository = "owner/fork";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response("Not Found", { status: 404 })),
+		);
+
+		await expect(checkForNewPiVersion("1.2.3")).resolves.toBeUndefined();
 	});
 });
