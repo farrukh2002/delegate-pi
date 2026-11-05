@@ -120,6 +120,7 @@ import {
 	type UsageEntry,
 } from "../../core/session-manager.ts";
 import type { FullscreenExitOutput, TuiMode } from "../../core/settings-manager.ts";
+import { unknownCommandTip } from "../../core/slash-command-suggestions.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.ts";
 import { getSourcePackageKey, type SourceInfo } from "../../core/source-info.ts";
 import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
@@ -450,6 +451,26 @@ interface ExtensionChangelogUpdate {
 	name: string;
 	version: string;
 	markdown: string;
+}
+
+/** Every command name the session accepts, for mistyped-command suggestions. Tolerates a partial session. */
+function knownCommandNames(session: unknown): string[] {
+	const source = session as {
+		extensionRunner?: { getRegisteredCommands?: () => Array<{ invocationName?: string }> };
+		promptTemplates?: Array<{ name?: string }>;
+		resourceLoader?: { getSkills?: () => { skills: Array<{ name?: string }> } };
+	};
+	const names = BUILTIN_SLASH_COMMANDS.map((command) => command.name);
+	for (const command of source?.extensionRunner?.getRegisteredCommands?.() ?? []) {
+		if (command.invocationName) names.push(command.invocationName);
+	}
+	for (const template of source?.promptTemplates ?? []) {
+		if (template.name) names.push(template.name);
+	}
+	for (const skill of source?.resourceLoader?.getSkills?.().skills ?? []) {
+		if (skill.name) names.push(`skill:${skill.name}`);
+	}
+	return names;
 }
 
 export class InteractiveMode {
@@ -3307,6 +3328,13 @@ export class InteractiveMode {
 			if (text === "/quit" || text === "/exit") {
 				this.editor.setText("");
 				await this.shutdown();
+				return;
+			}
+
+			const unknownCommand = unknownCommandTip(text, knownCommandNames(this.session));
+			if (unknownCommand) {
+				this.showWarning(unknownCommand);
+				this.editor.setText(text);
 				return;
 			}
 
