@@ -1,10 +1,11 @@
-import { type TUI, visibleWidth } from "@earendil-works/pi-tui";
+import { setKeybindings, type TUI, visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
+	formatElapsed,
 	IdleStatus,
 	RetryStatusIndicator,
 	WorkingStatusIndicator,
@@ -15,6 +16,25 @@ import { stripAnsi } from "../src/utils/ansi.ts";
 describe("status indicators", () => {
 	afterEach(() => {
 		vi.useRealTimers();
+	});
+
+	it("shows the elapsed time and the stop key on the working line", () => {
+		initTheme("dark");
+		setKeybindings(KeybindingsManager.create());
+		const tui = { requestRender: vi.fn(), terminal: { rows: 10 } } as unknown as TUI;
+		let now = 1_000;
+		const indicator = new WorkingStatusIndicator(tui, "Working", undefined, undefined, () => now);
+		now += 72_000;
+		indicator.setMessage("Working");
+
+		expect(stripAnsi(indicator.renderInBorder(60))).toContain("Working · 1m 12s · escape to stop");
+		indicator.dispose();
+	});
+
+	it("formats elapsed time in seconds, minutes and hours", () => {
+		expect(formatElapsed(9_400)).toBe("9s");
+		expect(formatElapsed(72_000)).toBe("1m 12s");
+		expect(formatElapsed(3_900_000)).toBe("1h 5m");
 	});
 
 	it("keeps idle status at the same height as standalone status indicators", () => {
@@ -57,7 +77,7 @@ describe("status indicators", () => {
 		editor.setWorkingStatusIndicator(indicator);
 
 		const topBorder = editor.render(20)[0]!;
-		expect(stripAnsi(topBorder)).toBe("── ⠋ Working ───────");
+		expect(stripAnsi(topBorder).startsWith("── ⠋ Working · 0s")).toBe(true);
 		expect(visibleWidth(topBorder)).toBe(20);
 		expect(topBorder.split(theme.getFgAnsi("thinkingHigh"))).toHaveLength(5);
 		indicator.dispose();

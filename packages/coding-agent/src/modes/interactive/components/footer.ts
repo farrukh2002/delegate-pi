@@ -44,6 +44,18 @@ export function formatCwdForFooter(cwd: string, home: string | undefined): strin
 	return relativeToHome === "" ? "~" : `~${sep}${relativeToHome}`;
 }
 
+function spread(left: string, rights: string[], width: number): string {
+	for (const right of rights) {
+		const gap = width - visibleWidth(left) - visibleWidth(right);
+		if (gap >= 2) return left + " ".repeat(gap) + right;
+	}
+	const right = rights[rights.length - 1] ?? "";
+	const leftRoom = width - visibleWidth(right) - 2;
+	if (leftRoom < 16) return truncateToWidth(left, width, theme.fg("dim", "…"));
+	const fitted = truncateToWidth(left, leftRoom, theme.fg("dim", "…"));
+	return fitted + " ".repeat(Math.max(2, width - visibleWidth(fitted) - visibleWidth(right))) + right;
+}
+
 interface SessionStats {
 	session: AgentSession;
 	sessionId: string;
@@ -155,137 +167,92 @@ export class FooterComponent implements Component {
 	}
 
 	render(width: number): string[] {
+		return this.withExtensionStatuses([this.renderLocationLine(width), this.renderStatsLine(width)], width);
+	}
+
+	private renderLocationLine(width: number): string {
+		const state = this.session.state;
+		const pwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
+		const branch = this.footerData.getGitBranch();
+		const sessionName = this.session.sessionManager.getSessionName();
+		const left =
+			theme.fg("muted", pwd) +
+			(branch ? `  ${theme.fg("accent", branch)}` : "") +
+			(sessionName ? theme.fg("dim", ` • ${sanitizeStatusText(sessionName)}`) : "");
+
+		let model = state.model?.id || "no-model";
+		if (state.model?.reasoning) {
+			const thinkingLevel = state.thinkingLevel || "off";
+			model += theme.fg("dim", thinkingLevel === "off" ? " • thinking off" : ` • ${thinkingLevel}`);
+		}
+		const routed = this.session.routedModel;
+		if (routed) {
+			model += theme.fg("dim", ` → ${routed.model.id}${routed.thinkingLevel ? ` • ${routed.thinkingLevel}` : ""}`);
+		}
+		const rights =
+			this.footerData.getAvailableProviderCount() > 1 && state.model
+				? [`${theme.fg("dim", `(${state.model.provider})`)} ${model}`, model]
+				: [model];
+		return spread(left, rights, width);
+	}
+
+	private renderStatsLine(width: number): string {
 		const state = this.session.state;
 		const { usageTotals, latestCacheHitRate, contextUsage } = this.getSessionStats();
 		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
-		const contextPercentValue = contextUsage?.percent ?? 0;
-		const contextPercent = contextUsage?.percent !== null ? contextPercentValue.toFixed(1) : "?";
+		const known = contextUsage?.percent !== null;
+		const percent = Math.min(100, Math.max(0, contextUsage?.percent ?? 0));
+		const color = percent > 90 ? "error" : percent > 70 ? "warning" : "success";
+		const barWidth = width >= 100 ? 14 : width >= 70 ? 10 : 6;
+		const filled = known ? Math.round((percent / 100) * barWidth) : 0;
+		const bar = theme.fg(color, "█".repeat(filled)) + theme.fg("dim", "░".repeat(barWidth - filled));
+		const label = (text: string) => theme.fg("dim", text);
+		const value = (text: string) => theme.fg("muted", text);
 
-		// Replace home directory with ~
-		let pwd = formatCwdForFooter(this.session.sessionManager.getCwd(), process.env.HOME || process.env.USERPROFILE);
-
-		// Add git branch if available
-		const branch = this.footerData.getGitBranch();
-		if (branch) {
-			pwd = `${pwd} (${branch})`;
+		const segments: Array<{ text: string; priority: number }> = [
+			{
+				text: `${label("ctx")} ${bar} ${theme.fg(color, known ? `${percent.toFixed(1)}%` : "?")}${label(` of ${formatTokens(contextWindow)}${this.autoCompactEnabled ? " auto" : ""}`)}`,
+				priority: 0,
+			},
+		];
+		if (usageTotals.input)
+			segments.push({ text: `${label("in")} ${value(formatTokens(usageTotals.input))}`, priority: 2 });
+		if (usageTotals.output) {
+			segments.push({ text: `${label("out")} ${value(formatTokens(usageTotals.output))}`, priority: 2 });
 		}
-
-		// Add session name if set
-		const sessionName = this.session.sessionManager.getSessionName();
-		if (sessionName) {
-			pwd = `${pwd} • ${sessionName}`;
+		if (usageTotals.cacheRead) {
+			segments.push({ text: `${label("cached")} ${value(formatTokens(usageTotals.cacheRead))}`, priority: 4 });
 		}
-
-		// Build stats line
-		const statsParts = [];
-		if (usageTotals.input) statsParts.push(`↑${formatTokens(usageTotals.input)}`);
-		if (usageTotals.output) statsParts.push(`↓${formatTokens(usageTotals.output)}`);
-		if (usageTotals.cacheRead) statsParts.push(`R${formatTokens(usageTotals.cacheRead)}`);
-		if (usageTotals.cacheWrite) statsParts.push(`W${formatTokens(usageTotals.cacheWrite)}`);
+		if (usageTotals.cacheWrite) {
+			segments.push({ text: `${label("written")} ${value(formatTokens(usageTotals.cacheWrite))}`, priority: 5 });
+		}
 		if ((usageTotals.cacheRead > 0 || usageTotals.cacheWrite > 0) && latestCacheHitRate !== undefined) {
-			statsParts.push(`CH${latestCacheHitRate.toFixed(1)}%`);
+			segments.push({ text: `${label("hit")} ${value(`${latestCacheHitRate.toFixed(1)}%`)}`, priority: 3 });
 		}
-
 		// Kimi Coding is subscription-backed despite using API-key authentication.
 		const usingSubscription = state.model
 			? state.model.provider === "kimi-coding" || this.session.modelRuntime.isUsingSubscription(state.model.provider)
 			: false;
 		if (usageTotals.cost || usingSubscription) {
-			const costStr = `$${usageTotals.cost.toFixed(3)}${usingSubscription ? " (sub)" : ""}`;
-			statsParts.push(costStr);
+			segments.push({
+				text: theme.fg("accent", `$${usageTotals.cost.toFixed(3)}`) + (usingSubscription ? label(" sub") : ""),
+				priority: 1,
+			});
 		}
+		if (areExperimentalFeaturesEnabled()) segments.push({ text: theme.bold(theme.fg("warning", "xp")), priority: 1 });
 
-		// Colorize context percentage based on usage
-		let contextPercentStr: string;
-		const autoIndicator = this.autoCompactEnabled ? " (auto)" : "";
-		const contextPercentDisplay =
-			contextPercent === "?"
-				? `?/${formatTokens(contextWindow)}${autoIndicator}`
-				: `${contextPercent}%/${formatTokens(contextWindow)}${autoIndicator}`;
-		if (contextPercentValue > 90) {
-			contextPercentStr = theme.fg("error", contextPercentDisplay);
-		} else if (contextPercentValue > 70) {
-			contextPercentStr = theme.fg("warning", contextPercentDisplay);
-		} else {
-			contextPercentStr = contextPercentDisplay;
+		const join = () => segments.map((part) => part.text).join("   ");
+		while (segments.length > 1 && visibleWidth(join()) > width) {
+			const lowest = Math.max(...segments.map((part) => part.priority));
+			segments.splice(
+				segments.findLastIndex((part) => part.priority === lowest),
+				1,
+			);
 		}
-		statsParts.push(contextPercentStr);
-		if (areExperimentalFeaturesEnabled()) {
-			statsParts.push(`${theme.fg("dim", "•")} ${theme.bold(theme.fg("warning", "xp"))}`);
-		}
+		return truncateToWidth(join(), width, theme.fg("dim", "…"));
+	}
 
-		let statsLeft = statsParts.join(" ");
-
-		// Add model name on the right side, plus thinking level if model supports it
-		const modelName = state.model?.id || "no-model";
-
-		let statsLeftWidth = visibleWidth(statsLeft);
-
-		// If statsLeft is too wide, truncate it
-		if (statsLeftWidth > width) {
-			statsLeft = truncateToWidth(statsLeft, width, "...");
-			statsLeftWidth = visibleWidth(statsLeft);
-		}
-
-		// Calculate available space for padding (minimum 2 spaces between stats and model)
-		const minPadding = 2;
-
-		// Add thinking level indicator if model supports reasoning
-		let rightSideWithoutProvider = modelName;
-		if (state.model?.reasoning) {
-			const thinkingLevel = state.thinkingLevel || "off";
-			rightSideWithoutProvider =
-				thinkingLevel === "off" ? `${modelName} • thinking off` : `${modelName} • ${thinkingLevel}`;
-		}
-		// A virtual model routes each request; show where the latest response went.
-		const routed = this.session.routedModel;
-		if (routed) {
-			const level = routed.thinkingLevel ? ` • ${routed.thinkingLevel}` : "";
-			rightSideWithoutProvider += ` → ${routed.model.id}${level}`;
-		}
-
-		// Prepend the provider in parentheses if there are multiple providers and there's enough room
-		let rightSide = rightSideWithoutProvider;
-		if (this.footerData.getAvailableProviderCount() > 1 && state.model) {
-			rightSide = `(${state.model!.provider}) ${rightSideWithoutProvider}`;
-			if (statsLeftWidth + minPadding + visibleWidth(rightSide) > width) {
-				// Too wide, fall back
-				rightSide = rightSideWithoutProvider;
-			}
-		}
-
-		const rightSideWidth = visibleWidth(rightSide);
-		const totalNeeded = statsLeftWidth + minPadding + rightSideWidth;
-
-		let statsLine: string;
-		if (totalNeeded <= width) {
-			// Both fit - add padding to right-align model
-			const padding = " ".repeat(width - statsLeftWidth - rightSideWidth);
-			statsLine = statsLeft + padding + rightSide;
-		} else {
-			// Need to truncate right side
-			const availableForRight = width - statsLeftWidth - minPadding;
-			if (availableForRight > 0) {
-				const truncatedRight = truncateToWidth(rightSide, availableForRight, "");
-				const truncatedRightWidth = visibleWidth(truncatedRight);
-				const padding = " ".repeat(Math.max(0, width - statsLeftWidth - truncatedRightWidth));
-				statsLine = statsLeft + padding + truncatedRight;
-			} else {
-				// Not enough space for right side at all
-				statsLine = statsLeft;
-			}
-		}
-
-		// Apply dim to each part separately. statsLeft may contain color codes (for context %)
-		// that end with a reset, which would clear an outer dim wrapper. So we dim the parts
-		// before and after the colored section independently.
-		const dimStatsLeft = theme.fg("dim", statsLeft);
-		const remainder = statsLine.slice(statsLeft.length); // padding + rightSide
-		const dimRemainder = theme.fg("dim", remainder);
-
-		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
-		const lines = [pwdLine, dimStatsLeft + dimRemainder];
-
+	private withExtensionStatuses(lines: string[], width: number): string[] {
 		// Add extension statuses on a single line, sorted by key alphabetically
 		const extensionStatuses = this.footerData.getExtensionStatuses();
 		if (extensionStatuses.size > 0) {
