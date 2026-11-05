@@ -2478,9 +2478,7 @@ export class InteractiveMode {
 		this.workingVisible = true;
 		this.setWorkingIndicator();
 		if (this.activeStatusIndicator?.kind === "working") {
-			this.activeStatusIndicator.setMessage(
-				`${this.defaultWorkingMessage} (${keyText("app.interrupt")} to interrupt)`,
-			);
+			this.activeStatusIndicator.setMessage(this.defaultWorkingMessage);
 		}
 		this.setHiddenThinkingLabel();
 	}
