@@ -62,6 +62,7 @@ import {
 	getAuthPath,
 	getDebugLogPath,
 	getDocsPath,
+	RELEASE_REPOSITORY,
 	VERSION,
 } from "../../config.ts";
 import { type AgentSession, type AgentSessionEvent, parseSkillBlock } from "../../core/agent-session.ts";
@@ -1482,7 +1483,7 @@ export class InteractiveMode {
 	}
 
 	private reportInstallTelemetry(version: string): void {
-		if (process.env.PI_OFFLINE) {
+		if (process.env.PI_OFFLINE || RELEASE_REPOSITORY) {
 			return;
 		}
 
@@ -4690,7 +4691,9 @@ export class InteractiveMode {
 		const updateInstruction = () =>
 			theme.fg("muted", `New version ${release.version} is available. Run `) +
 			theme.fg("accent", `${APP_NAME} update`);
-		const changelogUrl = "https://pi.dev/changelog";
+		const changelogUrl = RELEASE_REPOSITORY
+			? `https://github.com/${RELEASE_REPOSITORY}/releases`
+			: "https://pi.dev/changelog";
 		const changelogLine = () => {
 			const changelogLink = getCapabilities().hyperlinks
 				? hyperlink(theme.fg("accent", changelogUrl), changelogUrl)

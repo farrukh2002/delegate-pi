@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="853" height="256" viewBox="0 0 853 256" role="img" aria-label="delegate-pi — delegate result">
+<style>text{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:14px;white-space:pre}</style>
+<rect width="853" height="256" rx="12" fill="#0d1117"/>
+<rect x="0.5" y="0.5" width="852" height="255" rx="12" fill="none" stroke="#30363d"/>
+<circle cx="22" cy="18" r="6" fill="#ff5f57"/><circle cx="42" cy="18" r="6" fill="#febc2e"/><circle cx="62" cy="18" r="6" fill="#28c840"/>
+<text x="426.5" y="23" fill="#7d8590" text-anchor="middle" style="font-size:12px">delegate-pi — delegate result</text>
+<text x="22.0" y="60" fill="#d29922">!</text>
+<text x="38.9" y="60" fill="#9198a1" textLength="75.9" opacity="0.6">delegated</text>
+<text x="123.2" y="60" fill="#3fb950">✓</text>
+<text x="131.6" y="60" fill="#e6edf3" textLength="101.2"> cmd-worker </text>
+<text x="232.8" y="60" fill="#3fb950">✓</text>
+<text x="241.2" y="60" fill="#e6edf3" textLength="92.7"> cx-worker </text>
+<text x="333.9" y="60" fill="#d29922">!</text>
+<text x="342.3" y="60" fill="#e6edf3" textLength="84.3"> pi-scout </text>
+<text x="426.6" y="60" fill="#9198a1" textLength="42.1" opacity="0.6">2m14s</text>
+<text x="22.0" y="79" fill="#3fb950">✓</text>
+<text x="30.4" y="79" fill="#e6edf3" textLength="101.2"> cmd-worker </text>
+<text x="131.6" y="79" fill="#9198a1" textLength="236.0" opacity="0.6">completed · 2m14s · src/core</text>
+<text x="22.0" y="98" fill="#656c76" textLength="295.1" opacity="0.6">  ⎿ edit src/core/footer.ts +38 -12</text>
+<text x="22.0" y="117" fill="#656c76" textLength="185.5" opacity="0.6">  ⎿ bash npm run check</text>
+<text x="22.0" y="136" fill="#3fb950">✓</text>
+<text x="30.4" y="136" fill="#e6edf3" textLength="92.7"> cx-worker </text>
+<text x="123.2" y="136" fill="#9198a1" textLength="244.5" opacity="0.6">completed · 1m11s · read-only</text>
+<text x="22.0" y="155" fill="#656c76" textLength="345.6" opacity="0.6">  ⎿ ast_grep outline src/extensions/usage</text>
+<text x="22.0" y="174" fill="#d29922">!</text>
+<text x="30.4" y="174" fill="#e6edf3" textLength="84.3"> pi-scout </text>
+<text x="114.7" y="174" fill="#9198a1" textLength="210.8" opacity="0.6">blocked · 48s · read-only</text>
+<text x="22.0" y="193" fill="#656c76" textLength="303.5" opacity="0.6">  ⎿ asked: may I read ~/.ssh/config?</text>
+<text x="22.0" y="231" fill="#9198a1">↳</text>
+<text x="38.9" y="231" fill="#9198a1" textLength="50.6">report</text>
+<text x="97.9" y="231" fill="#3fb950">✓</text>
+<text x="106.3" y="231" fill="#e6edf3" textLength="101.2"> cmd-worker </text>
+<text x="207.5" y="231" fill="#3fb950">✓</text>
+<text x="215.9" y="231" fill="#e6edf3" textLength="92.7"> cx-worker </text>
+<text x="308.6" y="231" fill="#d29922">!</text>
+<text x="317.1" y="231" fill="#e6edf3" textLength="75.9"> pi-scout</text>
+</svg>

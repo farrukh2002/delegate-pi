@@ -1160,7 +1160,10 @@ export async function handlePackageCommand(
 					}
 				}
 				if (updateTargetIncludesSelf(target)) {
-					const forkedSelfUpdate = getForkedSelfUpdateInstruction();
+					const configuredSelfUpdateArgv = getConfiguredSelfUpdateArgv(
+						settingsManager.getGlobalSettings().selfUpdateCommand,
+					);
+					const forkedSelfUpdate = configuredSelfUpdateArgv ? undefined : getForkedSelfUpdateInstruction();
 					if (forkedSelfUpdate) {
 						console.error(
 							chalk.red(
@@ -1171,9 +1174,6 @@ export async function handlePackageCommand(
 						process.exitCode = 1;
 						return true;
 					}
-					const configuredSelfUpdateArgv = getConfiguredSelfUpdateArgv(
-						settingsManager.getGlobalSettings().selfUpdateCommand,
-					);
 					// A configured command is explicit user intent, so it replaces the managed install path too.
 					const managedInstallRoot = configuredSelfUpdateArgv ? undefined : getActiveManagedInstallRoot();
 					if (managedInstallRoot && options.force) {
