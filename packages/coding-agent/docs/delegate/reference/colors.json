@@ -1,0 +1,28 @@
+{
+  "source": "Installed Claude Code 2.1.314 standard truecolor themes",
+  "verification": "Palette values inspected locally; rendered visual comparison is pending",
+  "dark": {
+    "claude": "#d77757",
+    "promptBorder": "#888888",
+    "text": "#ffffff",
+    "inactive": "#999999",
+    "subtle": "#505050",
+    "success": "#4eba65",
+    "error": "#ff6b80",
+    "warning": "#ffc107",
+    "diffAdded": "#225c2b",
+    "diffRemoved": "#7a2936"
+  },
+  "light": {
+    "claude": "#d77757",
+    "promptBorder": "#8a8a8a",
+    "text": "#000000",
+    "inactive": "#666666",
+    "subtle": "#afafaf",
+    "success": "#2c7a39",
+    "error": "#ab2b3f",
+    "warning": "#966c1e",
+    "diffAdded": "#69db7c",
+    "diffRemoved": "#ffa8b4"
+  }
+}

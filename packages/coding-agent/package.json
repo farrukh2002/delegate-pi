@@ -27,7 +27,12 @@
 		"examples",
 		"schemas",
 		"containerization.md",
-		"CHANGELOG.md"
+		"CHANGELOG.md",
+		"delegate/LICENSE",
+		"delegate/agents",
+		"delegate/core/*.ts",
+		"delegate/core/*.mjs",
+		"delegate/core/bridge"
 	],
 	"scripts": {
 		"clean": "node ../../scripts/package-files.mjs clean dist",
