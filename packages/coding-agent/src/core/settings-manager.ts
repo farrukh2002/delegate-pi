@@ -11,6 +11,7 @@ import { stripBom } from "../utils/text.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS, parseHttpIdleTimeoutMs } from "./http-dispatcher.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 import type {
+	AccentSettingValue,
 	CacheWarmingMode,
 	CompactionModelOverride,
 	DefaultProjectTrust,
@@ -27,6 +28,7 @@ import type {
 } from "./settings-schema.ts";
 
 export type {
+	AccentSettingValue,
 	BranchSummarySettings,
 	CacheWarmingMode,
 	CodemodeMode,
@@ -1263,6 +1265,19 @@ export class SettingsManager {
 		}
 		this.globalSettings.terminal.showTerminalProgress = enabled;
 		this.markModified("terminal", "showTerminalProgress");
+		this.save();
+	}
+
+	getAccent(): AccentSettingValue {
+		const value = this.settings.accent;
+		return value === "yellow" || value === "green" || value === "orange" || value === "blue"
+			? value
+			: SETTINGS_DEFAULTS.accent;
+	}
+
+	setAccent(accent: AccentSettingValue): void {
+		this.globalSettings.accent = accent;
+		this.markModified("accent");
 		this.save();
 	}
 

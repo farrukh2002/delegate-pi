@@ -61,6 +61,16 @@ export interface ThemeStyle extends TextAttributes {
 
 export type ThemeJsonValidator = (label: string, json: unknown) => ThemeJson;
 
+function resolveCanvas(
+	canvas: ColorValue | undefined,
+	vars: Record<string, ColorValue> | undefined,
+): Color | undefined {
+	if (canvas === undefined) return undefined;
+	const value = resolveVarRefs(canvas, vars ?? {});
+	if (value === "") return undefined;
+	return parseColor(value);
+}
+
 let themeJsonValidator: ThemeJsonValidator | undefined;
 
 /**
@@ -161,6 +171,51 @@ const GUESSED_DEFAULT_COLORS: Record<ThemeAppearance, { foreground: Color; backg
 	light: { foreground: parseColor("#000000"), background: parseColor("#ffffff") },
 };
 
+/** The terminal's background, or the guess for the theme's appearance. */
+export function themeBackgroundColor(theme: Theme): Color {
+	const reported = terminalColors.background;
+	if (!reported) return GUESSED_DEFAULT_COLORS[theme.appearance].background;
+	return "kind" in reported ? (reported as Color) : rgbColor(reported.r, reported.g, reported.b);
+}
+
+export const ACCENT_NAMES = ["yellow", "green", "orange", "blue"] as const;
+export type AccentName = (typeof ACCENT_NAMES)[number];
+export type AccentSetting = AccentName | "theme";
+
+export const ACCENT_COLORS: Record<AccentName, string> = {
+	yellow: "#fab283",
+	green: "#34c759",
+	orange: "#f5a742",
+	blue: "#5c9cf5",
+};
+
+const ACCENT_TOKENS: ReadonlySet<ThemeToken> = new Set<ThemeToken>([
+	"accent",
+	"borderAccent",
+	"mdLink",
+	"mdListBullet",
+]);
+
+let accentOverride: Color | undefined;
+
+/** Override the accent family of every theme, or `theme` to keep the theme's own colors. */
+export function setAccentSetting(setting: AccentSetting | undefined): void {
+	const parsed = setting && setting !== "theme" ? parseColor(ACCENT_COLORS[setting]) : undefined;
+	accentOverride = parsed;
+}
+
+export function getAccentSetting(): AccentSetting {
+	if (!accentOverride) return "theme";
+	for (const name of ACCENT_NAMES) {
+		if (colorToHex(accentOverride) === colorToHex(parseColor(ACCENT_COLORS[name]))) return name;
+	}
+	return "theme";
+}
+
+function accentOverrideFor(token: ThemeToken): Color | undefined {
+	return accentOverride && ACCENT_TOKENS.has(token) ? accentOverride : undefined;
+}
+
 function averageLightness(colors: Color[]): number | undefined {
 	// Palette colors 0-15 follow the user's terminal palette, so they say nothing about the theme.
 	const fixed = colors.filter((color) => color.kind !== "indexed" || color.index >= 16);
@@ -185,6 +240,8 @@ function detectAppearance(foregrounds: Color[], backgrounds: Color[]): ThemeAppe
 export class Theme {
 	readonly name?: string;
 	readonly sourcePath?: string;
+	/** Terminal background this theme paints, or undefined to keep the terminal default. */
+	readonly canvas?: Color;
 	sourceInfo?: SourceInfo;
 	private mode: TerminalColorMode;
 	// Precomputed escape sequences keep fg()/bg() on the render hot path to a lookup and concat.
@@ -210,8 +267,11 @@ export class Theme {
 			appearance?: ThemeAppearance;
 			/** Foreground tokens to render faint (SGR 2). */
 			dim?: readonly ThemeColor[];
+			/** Terminal background to paint while this theme is active. */
+			canvas?: Color;
 		} = {},
 	) {
+		this.canvas = options.canvas;
 		this.name = options.name;
 		this.sourcePath = options.sourcePath;
 		this.sourceInfo = options.sourceInfo;
@@ -270,6 +330,11 @@ export class Theme {
 				const color = colors[token];
 				if (color) colors[token] = mixColors(color, background, 0.4);
 			}
+			if (accentOverride) {
+				for (const token of ACCENT_TOKENS) {
+					if (token in colors) colors[token] = accentOverride;
+				}
+			}
 			this.resolvedColors = { terminal, colors: Object.freeze(colors as Record<ThemeToken, Color>) };
 		}
 		return this.resolvedColors.colors;
@@ -283,7 +348,9 @@ export class Theme {
 			fg === undefined
 				? undefined
 				: typeof fg === "string"
-					? this.tokenAnsi(this.fgAnsi, fg)
+					? accentOverrideFor(fg) !== undefined
+						? foregroundAnsi(accentOverrideFor(fg) as Color, this.mode)
+						: this.tokenAnsi(this.fgAnsi, fg)
 					: foregroundAnsi(fg, this.mode),
 			bg === undefined
 				? undefined
@@ -295,6 +362,8 @@ export class Theme {
 	}
 
 	fg(color: ThemeColor, text: string): string {
+		const override = accentOverrideFor(color);
+		if (override) return `${foregroundAnsi(override, this.mode)}${text}\x1b[39m`;
 		const ansi = this.tokenAnsi(this.fgAnsi, color);
 		if (this.dimTokens.has(color)) return `${ansi}\x1b[2m${text}\x1b[22;39m`;
 		return `${ansi}${text}\x1b[39m`;
@@ -333,6 +402,8 @@ export class Theme {
 
 	/** Opening escape sequence for a foreground token. Faint tokens include SGR 2, which `\x1b[22m` closes. */
 	getFgAnsi(color: ThemeColor): string {
+		const override = accentOverrideFor(color);
+		if (override) return foregroundAnsi(override, this.mode);
 		const ansi = this.tokenAnsi(this.fgAnsi, color);
 		return this.dimTokens.has(color) ? `${ansi}\x1b[2m` : ansi;
 	}
@@ -381,11 +452,14 @@ let BUILTIN_THEMES: Record<string, ThemeJson> | undefined;
 function getBuiltinThemes(): Record<string, ThemeJson> {
 	if (!BUILTIN_THEMES) {
 		const themesDir = getThemesDir();
-		const darkPath = path.join(themesDir, "dark.json");
-		const lightPath = path.join(themesDir, "light.json");
+		const read = (name: string) =>
+			JSON.parse(stripBom(fs.readFileSync(path.join(themesDir, `${name}.json`), "utf-8"))) as ThemeJson;
 		BUILTIN_THEMES = {
-			dark: JSON.parse(stripBom(fs.readFileSync(darkPath, "utf-8"))) as ThemeJson,
-			light: JSON.parse(stripBom(fs.readFileSync(lightPath, "utf-8"))) as ThemeJson,
+			dark: read("dark"),
+			light: read("light"),
+			"github-dark": read("github-dark"),
+			"github-light": read("github-light"),
+			opencode: read("opencode"),
 		};
 	}
 	return BUILTIN_THEMES;
@@ -530,6 +604,7 @@ function createTheme(themeJson: ThemeJson, mode?: TerminalColorMode, sourcePath?
 		name: themeJson.name,
 		sourcePath,
 		appearance: themeJson.appearance,
+		canvas: resolveCanvas(themeJson.canvas, themeJson.vars),
 	});
 }
 
@@ -574,6 +649,8 @@ export function getThemeByName(name: string): Theme | undefined {
 }
 
 export type TerminalTheme = "dark" | "light";
+
+export const DEFAULT_THEME_SETTING = "github-light/github-dark";
 
 export function parseAutoThemeSetting(
 	themeSetting: string | undefined,
