@@ -1,6 +1,7 @@
-import type { RgbColor, TerminalColors, TUI } from "@earendil-works/pi-tui";
+import { type Color, colorToHex, type RgbColor, type TerminalColors, type TUI } from "@earendil-works/pi-tui";
 import type { SettingsManager } from "../../../core/settings-manager.ts";
 import {
+	DEFAULT_THEME_SETTING,
 	getTerminalTheme,
 	initTheme,
 	markTerminalColorsPending,
@@ -13,6 +14,7 @@ import {
 	setThemeInstance,
 	type TerminalTheme,
 	type Theme,
+	theme,
 } from "./theme.ts";
 
 type ThemeResult = { success: boolean; error?: string };
@@ -37,6 +39,11 @@ export function requestTerminalColors(ui: TUI, apply: (colors: TerminalColors) =
 		query = Promise.resolve({});
 	}
 	return query.then(apply, () => apply({}));
+}
+
+/** OSC 11 sets the terminal background; OSC 111 restores the terminal's own background. */
+export function canvasSequence(canvas: Color | undefined): string {
+	return canvas ? `\x1b]11;${colorToHex(canvas)}\x1b\\` : "\x1b]111\x1b\\";
 }
 
 function sameRgb(a: RgbColor | undefined, b: RgbColor | undefined): boolean {
@@ -139,8 +146,16 @@ export class InteractiveThemeController {
 		this.setAutoSync(false);
 		setThemeInstance(themeInstance);
 		this.activeThemeName = "<in-memory>";
+		this.syncCanvas();
 		this.notifyChanged();
 		return { success: true };
+	}
+
+	/** Paint the theme's canvas as the terminal background, or give the terminal's own background back. */
+	syncCanvas(): void {
+		try {
+			this.ui.terminal.write(canvasSequence(theme.canvas));
+		} catch {}
 	}
 
 	preview(themeSettingOrName: string): void {
@@ -167,7 +182,7 @@ export class InteractiveThemeController {
 	}
 
 	private getThemeSetting(): string | undefined {
-		return this.currentThemeSetting ?? this.getSettingsManager().getThemeSetting();
+		return this.currentThemeSetting ?? this.getSettingsManager().getThemeSetting() ?? DEFAULT_THEME_SETTING;
 	}
 
 	/** The theme for the current setting and terminal appearance. Without a setting, pi uses the system theme. */
@@ -178,6 +193,7 @@ export class InteractiveThemeController {
 	private applyThemeName(themeName: string, showError = false): ThemeResult {
 		const result = setTheme(themeName, true);
 		this.activeThemeName = result.success ? themeName : SYSTEM_THEME_NAME;
+		this.syncCanvas();
 		this.notifyChanged();
 		if (!result.success && showError) {
 			this.showError(`Failed to load theme "${themeName}": ${result.error}\nFell back to the system theme.`);

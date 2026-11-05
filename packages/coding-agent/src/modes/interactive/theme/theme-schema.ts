@@ -67,6 +67,9 @@ export const ThemeJsonSchema = Type.Object(
 				description: "Reusable color variables",
 			}),
 		),
+		canvas: Type.Optional(
+			colorValue("Terminal background color painted while this theme is active; omit to keep the terminal default"),
+		),
 		colors: ThemeColorsSchema,
 		export: Type.Optional(
 			Type.Object(

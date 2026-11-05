@@ -58,6 +58,8 @@ See [CLI resources](cli.md#resources) for the command-line option.
 
 ## Create a custom theme
 
+The built-in themes are `dark`, `light`, `github-dark`, `github-light` and `opencode`. The `opencode` theme reproduces opencode's palette: a `#0a0a0a` canvas, `#eeeeee` text and the `#fab283` yellow accent. Set `accent` in settings to override the accent of any theme.
+
 Copy one of the [built-in themes](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/src/modes/interactive/theme) or create a new JSON file conforming to the [schema](https://pi.dev/schemas/theme.schema.json). The built-in themes use OKHSL colors, with variables for colors that several roles share, so you can adjust a hue, saturation, or lightness directly.
 
 1. Save the file as `<agent-dir>/themes/my-theme.json`. The agent directory defaults to `~/.pi/agent`.
@@ -114,6 +116,8 @@ Theme colors describe interface roles rather than individual components. Use the
 | Syntax highlighting | `syntax*` |
 | Editor modes | `thinking*`, `bashMode` |
 | HTML export | `export.pageBg`, `export.cardBg`, `export.infoBg` |
+
+A theme can set an optional `canvas` color. pi paints it as the terminal background with OSC 11 while the theme is active, and restores the terminal's own background on exit. Themes without `canvas` leave the terminal background untouched.
 
 The schema is the format reference. The built-in themes provide complete values that you can copy and adjust.
 

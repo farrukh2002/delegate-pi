@@ -63,6 +63,7 @@ export const SETTINGS_DEFAULTS = {
 		inlineBudget: 3000,
 	},
 	cacheWarming: "idle",
+	accent: "theme",
 	tuiMode: "fullscreen",
 	fullscreenExitOutput: "transcript",
 	fullscreenScrollbar: "auto",
