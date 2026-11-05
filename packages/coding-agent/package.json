@@ -5,7 +5,8 @@
 	"type": "module",
 	"piConfig": {
 		"name": "delegate-pi",
-		"configDir": ".delegate-pi"
+		"configDir": ".delegate-pi",
+		"repository": "farrukh2002/delegate-pi"
 	},
 	"bin": {
 		"delegate-pi": "dist/bundle/cli.js"

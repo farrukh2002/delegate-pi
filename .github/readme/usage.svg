@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="853" height="275" viewBox="0 0 853 275" role="img" aria-label="delegate-pi — /usage">
+<style>text{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:14px;white-space:pre}</style>
+<rect width="853" height="275" rx="12" fill="#0d1117"/>
+<rect x="0.5" y="0.5" width="852" height="274" rx="12" fill="none" stroke="#30363d"/>
+<circle cx="22" cy="18" r="6" fill="#ff5f57"/><circle cx="42" cy="18" r="6" fill="#febc2e"/><circle cx="62" cy="18" r="6" fill="#28c840"/>
+<text x="426.5" y="23" fill="#7d8590" text-anchor="middle" style="font-size:12px">delegate-pi — /usage</text>
+<text x="22.0" y="60" fill="#4493f8" textLength="42.1">Usage</text>
+<text x="22.0" y="79" fill="#9198a1" textLength="387.8">Session footer polish · 27 messages · 4 models</text>
+<text x="22.0" y="117" fill="#4493f8" textLength="16.9">▸ </text>
+<text x="38.9" y="117" fill="#e6edf3" textLength="210.8" text-decoration="underline">anthropic/claude-opus-5-5</text>
+<text x="755.4" y="117" fill="#d29922" textLength="42.1" text-decoration="underline">$1.68</text>
+<text x="22.0" y="136" fill="#e6edf3" textLength="202.3">openai-codex/GPT-6.1-Sol</text>
+<text x="755.4" y="136" fill="#e6edf3" textLength="42.1">$0.54</text>
+<text x="22.0" y="155" fill="#e6edf3" textLength="92.7">zai/glm-5.3</text>
+<text x="755.4" y="155" fill="#e6edf3" textLength="42.1">$0.43</text>
+<text x="22.0" y="174" fill="#e6edf3" textLength="185.5">deepseek/deepseek-v4.1</text>
+<text x="755.4" y="174" fill="#e6edf3" textLength="42.1">$0.04</text>
+<text x="22.0" y="212" fill="#e6edf3" textLength="733.4">Total                                                                                  </text>
+<text x="755.4" y="212" fill="#e6edf3" textLength="42.1">$2.69</text>
+<text x="22.0" y="250" fill="#656c76" textLength="413.1">esc to close · up/down to move · enter for detail</text>
+</svg>

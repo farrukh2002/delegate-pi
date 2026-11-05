@@ -1,206 +1,135 @@
 <p align="center">
-  <a href="https://pi.dev">
-    <img alt="pi logo" src="https://pi.dev/logo-auto.svg" width="128">
-  </a>
+  <img alt="delegate-pi" src=".github/readme/banner.svg" width="100%">
 </p>
-<p align="center">
-  <a href="https://discord.com/invite/3cU7Bz4UPx"><img alt="Discord" src="https://img.shields.io/badge/discord-community-5865F2?style=flat-square&logo=discord&logoColor=white" /></a>
-  <a href="https://www.npmjs.com/package/@earendil-works/pi-coding-agent"><img alt="npm" src="https://img.shields.io/npm/v/@earendil-works/pi-coding-agent?style=flat-square" /></a>
-</p>
-
-> New issues and PRs from new contributors are auto-closed by default. Maintainers review auto-closed issues daily. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-# Pi
-
-Pi is a minimal, extensible agent harness that you can make your own.
-
-Adapt Pi to your workflows, not the other way around. Customize Pi with [extensions](packages/coding-agent/docs/extensions.md), [skills](packages/coding-agent/docs/skills.md), [prompt templates](packages/coding-agent/docs/prompt-templates.md), and [themes](packages/coding-agent/docs/themes.md). Bundle them as [Pi packages](packages/coding-agent/docs/packages.md) and share via npm or git.
-
-Pi ships with powerful defaults but skips features like sub-agents and plan mode. Ask Pi to build what you want, or install a package that does it your way.
-
-Use Pi [interactively](packages/coding-agent/docs/usage.md), automate it in [print or JSON mode](packages/coding-agent/docs/cli.md), control it over [RPC](packages/coding-agent/docs/rpc.md), or build apps with the [Pi TypeScript SDK](packages/coding-agent/docs/sdk.md). See [OpenClaw](https://github.com/OpenClaw/OpenClaw) for a real-world integration.
-
-## Getting started
-
-Install the command-line interface:
-
-```bash
-curl -fsSL https://pi.dev/install.sh | sh
-```
-
-On Windows:
-
-```shell
-powershell -c "irm https://pi.dev/install.ps1 | iex"
-```
-
-The installer pins all dependencies and updates Pi with `pi update`. Alternatively, install directly with npm, which does not pin transitive dependencies:
-
-```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-```
-
-Pi requires Node.js 22.19 or newer. The macOS, Linux, and Windows installers can install it if needed. Pi does not require dependency lifecycle scripts for a normal npm installation.
-
-Start Pi in the directory where you want it to work:
-
-```bash
-cd /path/to/project
-pi
-```
-
-For a built-in AI provider, run `/login` inside Pi to connect a subscription or API key. Then give Pi a task.
-
-See the [documentation](https://pi.dev/docs/latest) for full setup and usage instructions, or [visit pi.dev](https://pi.dev) for demos.
-
-## Run with Nix
-
-```bash
-nix run github:earendil-works/pi/stable
-```
-
-`stable` points at the latest release. Install it with `nix profile add github:earendil-works/pi/stable` and update with `nix profile upgrade pi`. Use a release tag such as `github:earendil-works/pi/v1.0.0` to pin a version, or `github:earendil-works/pi` for unreleased changes on `main`. Nix builds Pi from source.
-
-Supports ARM64 and x86-64 on Linux and macOS. Use `nix build .` or `nix run .` to build or run your checkout.
-
-Nix builds are offline, so the bundled model data comes from a pi.dev model catalog revision pinned in `nix/model-catalog.json`. At runtime, Pi still overlays newer catalog data from pi.dev as usual. The Nix workflow replaces the pin on `main` when it no longer matches the checkout, for example after a provider is added or gains a new model type. To refresh it by hand:
-
-```bash
-npm run update:model-catalog-pin
-```
-
-## Packages
-
-This monorepo contains the Pi CLI and its supporting libraries.
-
-| Package | Description |
-|---------|-------------|
-| **[@earendil-works/chord](packages/chord)** | Object runtime for apps across processes: contracts, documents, a store, links, plugins with hot reload, HTTP, workers, web and terminal clients |
-| **[@earendil-works/pi-telemetry](packages/telemetry)** | Vendor-neutral telemetry contracts, reference adapter, conformance tests, and typed schemas |
-| **[@earendil-works/pi-ai](packages/ai)** | Unified multi-provider LLM API (OpenAI, Anthropic, Google, etc.) |
-| **[@earendil-works/pi-durable](packages/durable)** | Durable conversation, task, and document runtime |
-| **[@earendil-works/pi-agent-core](packages/agent)** | Agent runtime with tool calling and state management |
-| **[@earendil-works/pi-coding-agent](packages/coding-agent)** | Interactive coding agent CLI |
-| **[@earendil-works/pi-tui](packages/tui)** | Terminal UI library with differential rendering |
-
-For Slack/chat automation and workflows see [earendil-works/pi-chat](https://github.com/earendil-works/pi-chat).
-
-## Permissions & Containerization
-
-Pi does not include a built-in permission system for restricting filesystem, process, network, or credential access. By default, it runs with the permissions of the user and process that launched it.
-
-If you need stronger boundaries, containerize or sandbox Pi. See [packages/coding-agent/docs/containerization.md](packages/coding-agent/docs/containerization.md) for three patterns:
-
-- **Gondolin extension**: keep `pi` and provider auth on the host while routing built-in tools and `!` commands into a local Linux micro-VM.
-- **Plain Docker**: run the whole `pi` process in a local container for simple isolation.
-- **OpenShell**: run the whole `pi` process in a policy-controlled sandbox.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and [AGENTS.md](AGENTS.md) for project-specific rules (for both humans and agents).  Longer term plans for Pi can also be found in [RFCs](https://rfc.earendil.com/keyword/pi).
-
-## Development
-
-```bash
-npm install --ignore-scripts  # Install all dependencies without running lifecycle scripts
-npm run build         # Refresh model data, then build all packages
-npm run build:offline # Rebuild using existing model data without network access
-npm run check         # Lint, format, and type check
-./test.sh            # Run tests (skips LLM-dependent tests without API keys)
-./pi-test.sh         # Run pi from sources (can be run from any directory)
-```
-
-### Using local packages outside the monorepo
-
-Build every public package into one coherent local artifact set:
-
-```bash
-npm run pack:packages -- --out .artifacts/pi-packages
-```
-
-This refreshes model data before building `pi-ai`. To avoid network access when
-model data is already hydrated, pass `--offline-model-data`.
-
-Then configure an external project to consume one package and resolve all of
-its Pi dependencies from the same artifact set. npm is the default:
-
-```bash
-node scripts/use-local-packages.mjs \
-  --manifest .artifacts/pi-packages/manifest.json \
-  --consumer ../my-project \
-  --package @earendil-works/pi-durable \
-  --package @earendil-works/pi-agent-core
-cd ../my-project
-npm install --ignore-scripts
-```
-
-For a pnpm project, point `--consumer` at the workspace root:
-
-```bash
-node scripts/use-local-packages.mjs \
-  --manifest .artifacts/pi-packages/manifest.json \
-  --consumer ../my-project \
-  --package @earendil-works/pi-agent-core \
-  --package-manager pnpm
-cd ../my-project
-pnpm install --ignore-scripts
-```
-
-Repeat `--package` for each direct dependency. The command updates the
-consumer's `package.json` with content-addressed local `file:` references. It
-writes transitive overrides to `package.json` for npm or `pnpm-workspace.yaml`
-for pnpm. Keep the artifact directory available while installing or updating
-the consumer. Re-run both commands after changing Pi source.
-
-## Building standalone binaries from release source
-
-GitHub releases include a versioned source archive covered by the release's `SHA256SUMS` file. Extract it and run the same build script used for the official standalone binaries:
-
-```bash
-VERSION="<release-version>"
-tar -xzf "pi-${VERSION}-source.tar.gz"
-cd "pi-${VERSION}"
-./scripts/build-binaries.sh --offline-model-data --platform linux-x64 --out "$PWD/out"
-```
-
-The archive includes release model data and native prebuilds. `--offline-model-data` uses that model data without refreshing provider catalogs. The script installs dependencies and builds the executable with its runtime assets; pass `--skip-install` if dependencies are already provided.
-
-## Supply-chain hardening
-
-We treat npm dependency changes as reviewed code changes.
-
-- Direct external dependencies are pinned to exact versions. Internal workspace packages remain version-ranged.
-- `.npmrc` sets `save-exact=true` and `min-release-age=2` to avoid same-day dependency releases during npm resolution.
-- `package-lock.json` is the dependency ground truth. Pre-commit blocks accidental lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1` is set.
-- `npm run check` verifies pinned direct deps, native TypeScript import compatibility, and the generated coding-agent install lock.
-- The pi.dev installer installs from `packages/coding-agent/install-lock/`, generated from the root lockfile, to pin transitive deps. The npm package does not pin transitive deps.
-- Local release smoke tests and npm publication use the same tarball packer; npm publishes the validated tarballs rather than repacking workspace directories.
-- Local release installs, documented npm installs, and `pi update --self` use `--ignore-scripts` where supported.
-- CI installs with `npm ci --ignore-scripts`, and a scheduled GitHub workflow runs `npm audit --omit=dev` plus `npm audit signatures --omit=dev`.
-- Install lock generation has an explicit allowlist for dependency lifecycle scripts; new lifecycle-script deps fail checks until reviewed.
-
-## Share your OSS coding agent sessions
-
-If you use Pi or other coding agents for open source work, please share your sessions.
-
-Public OSS session data helps improve coding agents with real-world tasks, tool use, failures, and fixes instead of toy benchmarks.
-
-For the full explanation, see [this post on X](https://x.com/badlogicgames/status/2037811643774652911).
-
-To publish sessions, use [`badlogic/pi-share-hf`](https://github.com/badlogic/pi-share-hf). Read its README.md for setup instructions. All you need is a Hugging Face account, the Hugging Face CLI, and `pi-share-hf`.
-
-You can also watch [this video](https://x.com/badlogicgames/status/2041151967695634619), where I show how I publish my `pi-mono` sessions.
-
-I regularly publish my own `pi-mono` work sessions here:
-
-- [badlogicgames/pi-mono on Hugging Face](https://huggingface.co/datasets/badlogicgames/pi-mono)
-
-## License
-
-MIT
 
 <p align="center">
-  <a href="https://pi.dev">pi.dev</a> domain graciously donated by
-  <br /><br />
-  <a href="https://exe.dev"><img src="packages/coding-agent/docs/images/exy.png" alt="Exy mascot" width="48" /><br />exe.dev</a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3fb950?style=for-the-badge"></a>
+  <img alt="Linux" src="https://img.shields.io/badge/platform-linux-58a6ff?style=for-the-badge&logo=linux&logoColor=white">
+  <a href="https://github.com/earendil-works/pi"><img alt="Fork of pi" src="https://img.shields.io/badge/fork%20of-earendil--works%2Fpi-8b949e?style=for-the-badge"></a>
+  <a href="https://github.com/earendil-works/pi/compare/d57c2d21916eaad1158031526ac6ec860eae5f14...main"><img alt="Upstream commits since our checkpoint" src="https://img.shields.io/github/commits-since/earendil-works/pi/d57c2d21916eaad1158031526ac6ec860eae5f14/main?style=for-the-badge&label=upstream%20changed&color=d29922"></a>
 </p>
+
+<p align="center">A custom harness forked from <a href="https://github.com/earendil-works/pi"><b>Pi</b></a>.</p>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/farrukh2002/delegate-pi/main/install.sh | sh
+```
+
+## Highlights
+
+<a name="delegate-your-work"></a><b>Delegate your work</b> <a href="#delegate-your-work"><img src=".github/readme/link.svg" width="14" height="14" alt="link"></a>
+
+Hand tasks to any of these harnesses:
+
+<table>
+  <tr><th align="center" width="300">Agent</th><th align="center" width="300">Harness</th><th align="center" width="200">Writes</th><th align="center" width="300">CLI needed</th></tr>
+  <tr><td align="center"><code>pi-scout</code></td><td align="center">pi</td><td align="center"><img src=".github/readme/cross.svg" width="16" height="16" alt="no"></td><td align="center"><img src=".github/readme/cross.svg" width="16" height="16" alt="no"></td></tr>
+  <tr><td align="center"><code>pi-worker</code></td><td align="center">pi</td><td align="center"><img src=".github/readme/tick.svg" width="16" height="16" alt="yes"></td><td align="center"><img src=".github/readme/cross.svg" width="16" height="16" alt="no"></td></tr>
+  <tr><td align="center"><code>cc-scout</code></td><td align="center">Claude</td><td align="center"><img src=".github/readme/cross.svg" width="16" height="16" alt="no"></td><td align="center"><code>claude</code></td></tr>
+  <tr><td align="center"><code>cc-worker</code></td><td align="center">Claude</td><td align="center"><img src=".github/readme/tick.svg" width="16" height="16" alt="yes"></td><td align="center"><code>claude</code></td></tr>
+  <tr><td align="center"><code>cx-worker</code></td><td align="center">Codex</td><td align="center"><img src=".github/readme/tick.svg" width="16" height="16" alt="yes"></td><td align="center"><code>codex</code></td></tr>
+  <tr><td align="center"><code>cmd-worker</code></td><td align="center">Command Code</td><td align="center"><img src=".github/readme/tick.svg" width="16" height="16" alt="yes"></td><td align="center"><code>cmd</code></td></tr>
+</table>
+
+An outside CLI must be installed and logged in. Support for other CLIs will come with time.
+
+Add your own agents as Markdown files in `~/.delegate-pi/agent/delegate/agents/` or `.delegate-pi/agents/`.
+
+<a name="sandbox"></a><b>Sandbox</b> <a href="#sandbox"><img src=".github/readme/link.svg" width="14" height="14" alt="link"></a>
+
+Every agent is restricted to its own sandbox and its file or folder scope.
+
+<table>
+  <tr><td align="center" width="300"><code>[]</code></td><td align="center" width="800">read-only</td></tr>
+  <tr><td align="center"><code>["src/core"]</code></td><td align="center">writes under <code>src/core</code> only</td></tr>
+  <tr><td align="center"><code>["."]</code></td><td align="center">the whole project</td></tr>
+</table>
+
+<a name="more"></a><b>And more</b> <a href="#more"><img src=".github/readme/link.svg" width="14" height="14" alt="link"></a>
+
+- **Accept or undo.** Every write task ends with a diff. Keep it, or put the files back.
+- **Live task band.** Running agents show above the prompt with their time and last tool call.
+- **Questions with choices.** Agents and the model can ask you with numbered options or a typed answer.
+- **`ast_grep` tool.** Structural code search, file outlines and callers.
+- **`/stats` and `/usage`.** A year of token use, provider limits and cost per model.
+- **Two-line footer.** Context, tokens, cache hits and price at a glance.
+- **Model header and themes.** An animated pet, the provider logo, GitHub and opencode themes, an accent picker.
+- **Did-you-mean.** A mistyped slash command gets a suggestion, not a prompt to the model.
+
+<p align="center">
+  <img alt="The /stats screen" src=".github/readme/stats.svg" width="100%">
+</p>
+
+<p align="center">
+  <img alt="delegate-pi with four agents running" src=".github/readme/hero.svg" width="100%">
+</p>
+
+## How it works
+
+<p align="center">
+  <img alt="You ask, the model delegates tasks, each agent runs in its own sandbox and scope, then you accept or undo the changes" src=".github/readme/how-it-works.svg" width="100%">
+</p>
+
+1. **Ask.** You tell the model what you want.
+2. **Delegate.** The model splits the work into tasks. Each task has an agent and a scope.
+3. **Run in sandboxes.** The agents work at the same time. A write outside the scope fails.
+4. **Review.** You get one report, and you accept or undo each agent's changes.
+
+Running agents show above the prompt. <kbd>alt</kbd>+<kbd>d</kbd> focuses that list, <kbd>j</kbd>/<kbd>k</kbd> moves, <kbd>enter</kbd> expands a row. If an agent asks a question, you answer it in a dialog.
+
+<p align="center">
+  <img alt="A question from an agent" src=".github/readme/ask.svg" width="100%">
+</p>
+
+## Everything else is pi
+
+The [pi docs](packages/coding-agent/docs) apply as written. We use `~/.delegate-pi` -> `~/.pi` and `delegate-pi` -> `pi`. It installs next to upstream pi without a conflict.
+
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/farrukh2002/delegate-pi/main/install.sh | sh
+```
+
+Linux (x64 or arm64) only. You need `bwrap` (bubblewrap). If you don't have Node.js 22.19 or newer, the installer gets its own copy.
+
+At the end, the installer adds a short name. If `pi` is free, it asks to use `pi`. If upstream pi is installed, it uses `pi2`. Pick your own name with `--alias <name>`, or skip it with `--no-alias`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/farrukh2002/delegate-pi/main/install.sh | sh -s -- --alias dp
+```
+
+Three release channels:
+
+| Channel | What you get | Install |
+| --- | --- | --- |
+| `stable` | the latest release (default) | `… \| sh` |
+| `rc` | the latest release candidate | `… \| sh -s -- --channel rc` |
+| `dev` | a build of the latest `main` | `… \| sh -s -- --channel dev` |
+
+The installer keeps your channel for later updates.
+
+```bash
+delegate-pi                                  # start, then /login
+delegate-pi update                           # update
+sh ~/.delegate-pi/app/install.sh --uninstall # uninstall (add --purge to delete settings too)
+```
+
+<details>
+<summary>From source</summary>
+
+```bash
+git clone https://github.com/farrukh2002/delegate-pi.git && cd delegate-pi
+npm install && npm run build
+node scripts/delegate-pi-install.mjs
+```
+
+</details>
+
+## Credits
+
+- [pi](https://github.com/earendil-works/pi) by Mario Zechner and contributors. This is a fork of their work.
+- [ast-grep](https://github.com/ast-grep/ast-grep) powers the `ast_grep` tool.
+- The `/stats` screen and `opencode` theme are based on [OpenCode](https://github.com/anomalyco/opencode)'s design.
+
+[MIT](LICENSE)
