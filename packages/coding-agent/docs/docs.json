@@ -197,6 +197,15 @@
           "path": "message-types.md"
         }
       ]
+    },
+    {
+      "title": "Delegate",
+      "items": [
+        {
+          "title": "Delegate Pi Fork",
+          "path": "delegate/README.md"
+        }
+      ]
     }
   ],
   "redirects": [
