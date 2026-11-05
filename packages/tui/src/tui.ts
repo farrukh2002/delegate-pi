@@ -515,6 +515,7 @@ export interface TUI extends Component {
 	getClearOnShrink(): boolean;
 	setClearOnShrink(enabled: boolean): void;
 	setFocus(component: Component | null): void;
+	getFocusedComponent(): Component | null;
 	showOverlay(component: Component, options?: OverlayOptions): OverlayHandle;
 	hideOverlay(): void;
 	hasOverlay(): boolean;
