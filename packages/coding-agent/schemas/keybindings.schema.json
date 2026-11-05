@@ -319,6 +319,22 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Delegate band: leave focus"
     },
+    "app.usage.escape": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Usage screen: close or go back"
+    },
+    "app.usage.up": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Usage screen: previous model"
+    },
+    "app.usage.down": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Usage screen: next model"
+    },
+    "app.usage.select": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Usage screen: show model detail"
+    },
     "app.session.new": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Start a new session"

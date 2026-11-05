@@ -5,11 +5,13 @@ import delegateExtension from "./delegate/index.ts";
 import llamaExtension from "./llama/index.ts";
 import mcpExtension from "./mcp/index.ts";
 import toolSearchExtension from "./tool-search/index.ts";
+import usageExtension from "./usage/index.ts";
 
 export const builtInExtensions: InlineExtension[] = [
 	{ name: "llama.cpp", factory: llamaExtension, builtin: true },
 	{ name: "delegate", factory: delegateExtension, builtin: true },
 	{ name: "ask", factory: askExtension, builtin: true },
+	{ name: "usage", factory: usageExtension, builtin: true },
 	// Replaceable: an extension that registers `codemode`, `tool_search`, or `/mcp` (such as a third-party
 	// MCP extension) takes over instead of running alongside the built-in one.
 	{ name: "codemode", factory: codemodeExtension, replaceable: true, builtin: true },
