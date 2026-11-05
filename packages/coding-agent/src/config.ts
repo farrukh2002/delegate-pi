@@ -388,6 +388,19 @@ export function getUpdateInstruction(packageName: string): string {
 	return getSelfUpdateUnavailableInstruction(packageName);
 }
 
+export function getForkedSelfUpdateInstruction(appName: string = APP_NAME): string | undefined {
+	if (appName === "pi") {
+		return undefined;
+	}
+	return [
+		`This ${appName} installation runs from its own local source and must not be replaced by the published package.`,
+		"Rebuild it from the repository root, then run it with the local launcher:",
+		"  npm install --ignore-scripts",
+		"  npm run build",
+		"  node scripts/delegate-pi-dev.mjs --version",
+	].join("\n");
+}
+
 // =============================================================================
 // Package Asset Paths (shipped with executable)
 // =============================================================================
@@ -607,8 +620,9 @@ export const CONFIG_DIR_NAME: string = pkg.piConfig?.configDir || ".pi";
 export const VERSION: string = pkg.version || "0.0.0";
 
 // e.g., PI_CODING_AGENT_DIR or TAU_CODING_AGENT_DIR
-export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
-export const ENV_SESSION_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_SESSION_DIR`;
+const ENV_PREFIX = APP_NAME.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+export const ENV_AGENT_DIR = `${ENV_PREFIX}_CODING_AGENT_DIR`;
+export const ENV_SESSION_DIR = `${ENV_PREFIX}_CODING_AGENT_SESSION_DIR`;
 
 export function expandTildePath(path: string): string {
 	return normalizePath(path);

@@ -10,6 +10,7 @@ import {
 	OAuthIssuerMismatchError,
 } from "@earendil-works/pi-mcp/oauth";
 import { afterEach, describe, expect, it } from "vitest";
+import { APP_NAME } from "../src/config.ts";
 import { InMemoryAuthStorageBackend } from "../src/core/auth-storage.ts";
 import {
 	createMcpAuthProvider,
@@ -239,20 +240,26 @@ describe("MCP OAuth client ID metadata documents", () => {
 	it("uses pi's document by default when authorization responses name their issuer", async () => {
 		const { server, store, signIn } = await startServer({ cimd: true, issParameter: true });
 		await signIn({});
+		const branded = APP_NAME === "pi";
+		const clientId = branded ? "https://pi.dev/oauth/client.json" : "client-1";
 		const [authorization] = server.authorizations;
-		expect(authorization.get("client_id")).toBe("https://pi.dev/oauth/client.json");
+		expect(authorization.get("client_id")).toBe(clientId);
 		const redirect = new URL(authorization.get("redirect_uri") ?? "");
 		expect(`${redirect.hostname}${redirect.pathname}`).toBe("127.0.0.1/callback");
 		expect(redirect.port).not.toBe("");
-		expect(server.registrations).toEqual([]);
-		expect(server.tokenRequests[0].get("client_id")).toBe("https://pi.dev/oauth/client.json");
+		expect(server.registrations).toHaveLength(branded ? 0 : 1);
+		expect(server.tokenRequests[0].get("client_id")).toBe(clientId);
 		expect(server.tokenRequests[0].get("redirect_uri")).toBe(redirect.href);
 		// The document is not stored, so signing in again refreshes the tokens instead of discarding them.
-		expect((await store.load())?.clientInformation).toBeUndefined();
+		if (branded) {
+			expect((await store.load())?.clientInformation).toBeUndefined();
+		} else {
+			expect((await store.load())?.clientInformation).toBeDefined();
+		}
 		await signIn({});
 		expect(server.authorizations).toHaveLength(1);
 		expect(server.tokenRequests[1].get("grant_type")).toBe("refresh_token");
-		expect(server.tokenRequests[1].get("client_id")).toBe("https://pi.dev/oauth/client.json");
+		expect(server.tokenRequests[1].get("client_id")).toBe(clientId);
 	});
 
 	// #11426
