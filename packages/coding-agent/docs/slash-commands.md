@@ -4,6 +4,8 @@ Type `/` in Pi's terminal editor to search the commands available in the current
 
 Extensions, prompt templates, and skills can add commands. The command menu in Pi is therefore the exact reference for the resources loaded in your session.
 
+A mistyped command is rejected instead of being sent to the model. The editor keeps the text and Pi shows a tip, for example `Unknown command /exiy. Did you mean /exit?`. Text that only looks like a path, such as `/usr/bin/env`, has no close command name, so it is still sent as a prompt.
+
 ## Models and settings
 
 | Command | Description |
