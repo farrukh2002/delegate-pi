@@ -335,6 +335,10 @@
       "$ref": "#/$defs/KeybindingValue",
       "description": "Usage screen: show model detail"
     },
+    "app.stats.close": {
+      "$ref": "#/$defs/KeybindingValue",
+      "description": "Stats screen: close"
+    },
     "app.session.new": {
       "$ref": "#/$defs/KeybindingValue",
       "description": "Start a new session"
