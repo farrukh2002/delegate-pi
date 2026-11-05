@@ -93,6 +93,13 @@ const APP_KEYBINDINGS = {
 		description: "Delegate band: expand or collapse the task",
 	},
 	"app.delegate.escape": { defaultKeys: "escape", description: "Delegate band: leave focus" },
+	"app.usage.escape": { defaultKeys: "escape", description: "Usage screen: close or go back" },
+	"app.usage.up": { defaultKeys: ["up", "k"], description: "Usage screen: previous model" },
+	"app.usage.down": { defaultKeys: ["down", "j"], description: "Usage screen: next model" },
+	"app.usage.select": {
+		defaultKeys: ["enter", "space"],
+		description: "Usage screen: show model detail",
+	},
 	"app.session.new": { defaultKeys: [], description: "Start a new session" },
 	"app.session.tree": { defaultKeys: [], description: "Open session tree" },
 	"app.session.fork": { defaultKeys: [], description: "Fork current session" },
