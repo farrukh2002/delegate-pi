@@ -58,7 +58,7 @@ export const SETTINGS_DEFAULTS = {
 		mode: "on",
 		inlineBudget: 3000,
 	},
-	cacheWarming: "streaming",
+	cacheWarming: "idle",
 	accent: "theme",
 	tuiMode: "fullscreen",
 	fullscreenExitOutput: "transcript",
