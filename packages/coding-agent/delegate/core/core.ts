@@ -359,6 +359,7 @@ export async function runWorker(id: string): Promise<void> {
 	let activeMs = 0;
 	let logPartial = "";
 	let logFd: number | undefined;
+	let ipcAlias: string | undefined;
 	const closeLog = () => { if (logFd !== undefined) { try { fs.closeSync(logFd); } catch {} logFd = undefined; } };
 	let parentListing: Record<string, string[]> = {};
 	let ignoredBefore = new Set<string>();
@@ -451,8 +452,15 @@ export async function runWorker(id: string): Promise<void> {
 		}
 		if (!stopped) {
 			fs.mkdirSync(path.join(dir, "ipc"), { mode: 0o700 });
-			await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(path.join(dir, "ipc/control.sock"), resolve); });
-			fs.chmodSync(path.join(dir, "ipc/control.sock"), 0o600);
+			const name = `delegate-ipc-${id}`;
+			const tempDir = os.tmpdir();
+			const base = Buffer.byteLength(path.join(tempDir, name, "control.sock")) < 108 ? tempDir : "/tmp";
+			const alias = path.join(base, name);
+			fs.symlinkSync(path.join(dir, "ipc"), alias, "dir");
+			ipcAlias = alias;
+			const socketPath = path.join(alias, "control.sock");
+			await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(socketPath, resolve); });
+			fs.chmodSync(socketPath, 0o600);
 			prepareHome(path.join(dir, "home"), input.provider);
 			const provider = PROVIDERS[input.provider as keyof typeof PROVIDERS];
 			let invocation = provider.build({ prompt: `${input.systemPrompt}\n\n${instruction(scope)}\n\nTask: ${input.task}`, model: input.model, maxTurns: input.maxTurns, tools: input.tools });
@@ -645,6 +653,7 @@ export async function runWorker(id: string): Promise<void> {
 		if (closed && escalation) clearTimeout(escalation);
 		for (const socket of connections) socket.destroy();
 		server.close();
+		if (ipcAlias) { try { fs.rmSync(ipcAlias, { force: true }); } catch {} }
 		if (slotHeld) { try { releaseSlot(input.cwd, id); slotHeld = false; } catch {} }
 		if (state.snapshot) {
 			try {

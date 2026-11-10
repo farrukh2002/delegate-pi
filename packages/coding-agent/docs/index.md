@@ -21,6 +21,8 @@ If Pi is already installed, choose what you want to do:
 Pi can reuse prompts, load specialized instructions, add executable integrations, change its terminal interface, connect model services, and distribute these resources as packages.
 Use the [Quickstart customization chooser](quickstart.md#choose-how-to-customize-pi) to select the smallest mechanism that meets your need.
 
+For this fork's build, installation, and update instructions, see [Delegate Pi development](delegate/development.md).
+
 ## Automate or embed Pi
 
 - Use [print mode](cli.md#invocation-and-output) for one-off and scripted tasks.
