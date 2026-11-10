@@ -6,7 +6,7 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-3fb950?style=for-the-badge"></a>
   <img alt="Linux" src="https://img.shields.io/badge/platform-linux-58a6ff?style=for-the-badge&logo=linux&logoColor=white">
   <a href="https://github.com/earendil-works/pi"><img alt="Fork of pi" src="https://img.shields.io/badge/fork%20of-earendil--works%2Fpi-8b949e?style=for-the-badge"></a>
-  <a href="https://github.com/earendil-works/pi/compare/d57c2d21916eaad1158031526ac6ec860eae5f14...main"><img alt="Upstream commits since our checkpoint" src="https://img.shields.io/github/commits-since/earendil-works/pi/d57c2d21916eaad1158031526ac6ec860eae5f14/main?style=for-the-badge&label=upstream%20changed&color=d29922"></a>
+  <a href="https://github.com/earendil-works/pi/compare/b2aabe02966a6b4528c7498a3bb406c14396932d...main"><img alt="Upstream commits since our checkpoint" src="https://img.shields.io/github/commits-since/earendil-works/pi/b2aabe02966a6b4528c7498a3bb406c14396932d/main?style=for-the-badge&label=upstream%20changed&color=d29922"></a>
 </p>
 
 <p align="center">A custom harness forked from <a href="https://github.com/earendil-works/pi"><b>Pi</b></a>.</p>
