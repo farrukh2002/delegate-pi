@@ -5,6 +5,7 @@ export default mergeConfig(
 	baseConfig,
 	defineConfig({
 		test: {
+			include: ["test/**/*.test.ts"],
 			globals: true,
 			environment: "node",
 			testTimeout: 30000,

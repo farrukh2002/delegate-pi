@@ -5,9 +5,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { answer, start, status } from "../core/core.ts";
 import { git, sleep } from "../core/workspace.ts";
 
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SKIP = spawnSync("bwrap", ["--version"]).status !== 0;
 const created: string[] = [];
 
@@ -101,4 +103,47 @@ test("a multi-byte character split across two output chunks stays intact", { ski
 		assert.match(done.summary, /Ergebnis: 日本語 ✓ grüß/);
 		assert.doesNotMatch(done.summary, /�/);
 	});
+});
+
+test("the control socket still binds with long data and temporary directory paths", { skip: SKIP }, async () => {
+	const base = tempDir();
+	const deep = path.join(base, "isolated", `delegate-long-tmp-${"u".repeat(40)}`);
+	fs.mkdirSync(deep, { recursive: true });
+	assert.ok(path.join(deep, "tasks", "d".repeat(36), "ipc", "control.sock").length > 107, "fixture must exceed the unix socket path limit");
+	const pkg = tempDir("delegate-pkg-");
+	fs.writeFileSync(path.join(pkg, "cli.mjs"), ASKING_CHILD);
+	const project = repo();
+	const script = [
+		"import * as path from \"node:path\";",
+		`import { answer, start, status } from ${JSON.stringify(path.join(ROOT, "core/core.ts"))};`,
+		`import { sleep } from ${JSON.stringify(path.join(ROOT, "core/workspace.ts"))};`,
+		`const started = start({ task: "ask, then report", provider: "pi", cwd: ${JSON.stringify(project)}, timeoutMs: 30000, noProgressMs: 30000 });`,
+		`const DONE = ["completed", "failed", "timed_out", "cancelled", "blocked"];`,
+		"let state = status(started.taskId);",
+		"let answered = false;",
+		"for (const end = Date.now() + 60000; Date.now() < end && !DONE.includes(state.status); await sleep(100)) {",
+		"\tif (!answered && state.pending?.length) { answer(started.taskId, state.pending[0].id, { answer: \"yes\" }); answered = true; }",
+		"\tstate = status(started.taskId);",
+		"}",
+		"if (state.status !== \"completed\" || !/ANSWER yes/.test(state.summary)) { console.error(JSON.stringify(state)); process.exit(1); }",
+		"console.log(JSON.stringify({ taskId: started.taskId, ipc: path.join(process.env.DELEGATE_DATA, \"tasks\", started.taskId, \"ipc\") }));",
+	].join("\n");
+	const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+		env: { ...process.env, TMPDIR: deep, DELEGATE_DATA: deep, DELEGATE_PI_ENTRY: path.join(pkg, "cli.mjs"), DELEGATE_PI_PACKAGE_DIR: pkg, PATH: "/usr/bin:/bin" },
+		encoding: "utf8",
+		timeout: 120000,
+	});
+	assert.equal(result.status, 0, `${result.stderr || result.stdout}${result.error ? ` ${result.error.message}` : ""}`);
+	const { ipc } = JSON.parse(result.stdout.trim());
+	const leftovers: string[] = [];
+	const ipcReal = fs.realpathSync(ipc);
+	for (const dir of new Set([os.tmpdir(), "/tmp"])) {
+		let names: string[] = [];
+		try { names = fs.readdirSync(dir); } catch { continue; }
+		for (const name of names) {
+			if (!name.startsWith("delegate-ipc-")) continue;
+			try { if (fs.realpathSync(path.join(dir, name)) === ipcReal) leftovers.push(name); } catch {}
+		}
+	}
+	assert.deepEqual(leftovers, []);
 });

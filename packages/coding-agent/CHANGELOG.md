@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed numeric tool arguments accepting `NaN`, `Infinity`, and `-Infinity`. Number and integer parameters now reject these values, including values calculated in codemode scripts.
+- Fixed delegate children failing to start when task or temporary directory paths exceed the Unix socket path limit.
+
 ## [1.5.1] - 2026-11-09
 
 ### New Features

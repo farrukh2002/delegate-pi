@@ -83,7 +83,7 @@ describe("InteractiveThemeController", () => {
 				answer = resolve;
 			}),
 		);
-		const controller = createController(ui, () => SettingsManager.inMemory());
+		const controller = createController(ui, () => SettingsManager.inMemory({ theme: "system" }));
 		controller.applyFromSettings();
 
 		// Grayscale until the terminal answers.
@@ -102,7 +102,7 @@ describe("InteractiveThemeController", () => {
 			lateReply = options.onLateReply!;
 			return {};
 		});
-		const controller = createController(ui, () => SettingsManager.inMemory());
+		const controller = createController(ui, () => SettingsManager.inMemory({ theme: "system" }));
 		controller.applyFromSettings();
 		await flush();
 		expect(theme.getFgAnsi("error")).toBe("\x1b[38;5;1m");
