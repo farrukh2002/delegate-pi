@@ -63,7 +63,7 @@ describe("defaultTools setting", () => {
 				.getAllTools()
 				.map((tool) => tool.name)
 				.sort(),
-		).toEqual(["bash", "edit", "find", "grep", "ls", "powershell", "read", "write"]);
+		).toEqual(["ast_grep", "bash", "edit", "find", "grep", "ls", "powershell", "read", "write"]);
 		expect(session.getActiveToolNames()).toEqual(["grep", "find"]);
 		expect(session.systemPrompt).toContain("- grep:");
 		expect(session.systemPrompt).not.toContain("- read:");
@@ -93,7 +93,7 @@ describe("defaultTools setting", () => {
 			},
 		]);
 
-		expect(session.getActiveToolNames().sort()).toEqual(["bash", "edit", "inactive_tool", "read"]);
+		expect(session.getActiveToolNames().sort()).toEqual(["ast_grep", "bash", "edit", "inactive_tool", "read"]);
 		session.dispose();
 	});
 
@@ -178,6 +178,7 @@ describe("defaultTools setting", () => {
 		const session = await createSession(["+grep"], { tools: ["+inactive_tool", "-write"] }, [inactiveTool]);
 		expect(session.getActiveToolNames().sort()).toEqual([
 			"active_tool",
+			"ast_grep",
 			"bash",
 			"edit",
 			"grep",
@@ -240,7 +241,7 @@ describe("defaultTools setting", () => {
 		// #10245
 		it("activates only tools newly added to defaultTools", async () => {
 			const session = await createFileSession();
-			expect(session.getActiveToolNames()).toEqual(["read", "bash", "edit", "write"]);
+			expect(session.getActiveToolNames()).toEqual(["read", "bash", "edit", "write", "ast_grep"]);
 			session.setActiveToolsByName(["read", "edit", "write"]);
 
 			writeSettings({ defaultTools: ["+inactive_tool", "+grep"] });
@@ -284,7 +285,14 @@ describe("defaultTools setting", () => {
 			const excluded = await createFileSession({ excludeTools: ["grep"] });
 			writeSettings({ defaultTools: ["+grep", "+inactive_tool"] });
 			await excluded.reload();
-			expect(excluded.getActiveToolNames().sort()).toEqual(["bash", "edit", "inactive_tool", "read", "write"]);
+			expect(excluded.getActiveToolNames().sort()).toEqual([
+				"ast_grep",
+				"bash",
+				"edit",
+				"inactive_tool",
+				"read",
+				"write",
+			]);
 			excluded.dispose();
 		});
 	});
@@ -450,7 +458,14 @@ describe("defaultTools setting", () => {
 			const sessionManager = SessionManager.inMemory(tempDir);
 			sessionManager.appendMessage({ role: "user", content: "hi", timestamp: Date.now() });
 			const session = await resume(sessionManager);
-			expect(session.getActiveToolNames().sort()).toEqual(["active_tool", "bash", "edit", "read", "write"]);
+			expect(session.getActiveToolNames().sort()).toEqual([
+				"active_tool",
+				"ast_grep",
+				"bash",
+				"edit",
+				"read",
+				"write",
+			]);
 			session.dispose();
 		});
 	});
@@ -469,7 +484,7 @@ describe("defaultTools setting", () => {
 				.getAllTools()
 				.map((tool) => tool.name)
 				.sort(),
-		).toEqual(["bash", "edit", "find", "grep", "ls", "powershell", "read", "write"]);
+		).toEqual(["ast_grep", "bash", "edit", "find", "grep", "ls", "powershell", "read", "write"]);
 		expect(session.getActiveToolNames()).toEqual(["ls"]);
 		session.dispose();
 	});

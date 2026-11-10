@@ -35,6 +35,7 @@ describe("fork self-update guard", () => {
 		let originalExitCode: typeof process.exitCode;
 
 		beforeEach(() => {
+			vi.stubEnv("PI_SELF_UPDATE_COMMAND", undefined);
 			tempDir = mkdtempSync(join(tmpdir(), "delegate-fork-distribution-"));
 			agentDir = join(tempDir, "agent");
 			projectDir = join(tempDir, "project");
@@ -62,6 +63,7 @@ describe("fork self-update guard", () => {
 
 		afterEach(() => {
 			vi.unstubAllGlobals();
+			vi.unstubAllEnvs();
 			vi.restoreAllMocks();
 			process.chdir(originalCwd);
 			process.exitCode = originalExitCode;
