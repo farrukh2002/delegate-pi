@@ -8,6 +8,7 @@ import { AgentSession, markRuntimeStreamFunction } from "./agent-session.ts";
 import { formatNoModelsAvailableMessage } from "./auth-guidance.ts";
 import { CacheWarmer } from "./cache-warmer.ts";
 import { getClientIdentity } from "./client-identity.ts";
+import type { SessionRequest } from "./compaction/cached-summary.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import type { ExtensionRunner, LoadExtensionsResult, SessionStartEvent, ToolDefinition } from "./extensions/index.ts";
 import { createToolNameMatcher } from "./mcp-servers.ts";
@@ -400,6 +401,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		});
 	};
 
+	let lastSessionRequest: SessionRequest | undefined;
 	const agent = new Agent({
 		initialState: {
 			systemPrompt: "",
@@ -418,6 +420,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			// the provider request, so top-level object identity is not a valid cache key.
 			if (options?.sessionId === sessionManager.getSessionId()) {
 				cacheWarmer.start({ model, context, options: requestOptions }, cacheContextIsCurrent(model));
+				lastSessionRequest = { model, context, options: requestOptions, messages: agent.state.messages.slice() };
 			}
 			return modelRuntime.streamSimple(model, context, requestOptions);
 		},
@@ -462,6 +465,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		customTools: options.customTools,
 		modelRuntime,
 		cacheWarmer,
+		getLastSessionRequest: () => lastSessionRequest,
 		initialActiveToolNames,
 		usesDefaultTools: (options.tools === undefined || toolModifiers !== undefined) && !options.noTools,
 		defaultToolModifiers: toolModifiers,
