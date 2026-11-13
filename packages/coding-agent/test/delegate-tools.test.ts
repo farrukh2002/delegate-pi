@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { DelegateHost } from "../src/core/delegate/manager.ts";
 import { DelegateManager } from "../src/core/delegate/manager.ts";
 import type {
@@ -259,6 +259,16 @@ describe("delegate_tasks actions", () => {
 		await run(h.delegate, h.ctx, { agent: "worker", task: "second" });
 		const result = await run(h.tasks, h.ctx, { action: "wait", taskId: first, waitMs: 5000 });
 		expect(result.content[0]!.text).toContain(first);
+		h.manager.dispose();
+	});
+
+	it("keeps wait between one and twenty minutes", async () => {
+		const h = makeHarness();
+		const spy = vi.spyOn(h.manager, "waitForReport").mockResolvedValue({ running: [], report: undefined } as never);
+		await run(h.tasks, h.ctx, { action: "wait", waitMs: 1000 });
+		await run(h.tasks, h.ctx, { action: "wait", waitMs: 99_000_000 });
+		await run(h.tasks, h.ctx, { action: "wait" });
+		expect(spy.mock.calls.map((call) => call[0])).toEqual([60_000, 1_200_000, 600_000]);
 		h.manager.dispose();
 	});
 

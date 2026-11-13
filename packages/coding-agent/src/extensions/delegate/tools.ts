@@ -14,8 +14,9 @@ export const DELEGATE_TOOL_NAME = "delegate";
 export const DELEGATE_TASKS_TOOL_NAME = "delegate_tasks";
 export const DEFAULT_TIMEOUT_MS = 900000;
 export const DEFAULT_BACKGROUND_WAIT_MS = 300000;
-export const DEFAULT_TASKS_WAIT_MS = 120000;
-export const MAX_TASKS_WAIT_MS = 300000;
+export const DEFAULT_TASKS_WAIT_MS = 600000;
+export const MIN_TASKS_WAIT_MS = 60000;
+export const MAX_TASKS_WAIT_MS = 1200000;
 
 const requestSchema = Type.Object({
 	agent: Type.String({ description: "Agent name from the Agents list." }),
@@ -139,7 +140,8 @@ const tasksSchema = Type.Object({
 	approve: Type.Optional(Type.Boolean({ description: "For answer: alias for approved." })),
 	waitMs: Type.Optional(
 		Type.Number({
-			description: "For wait: return after this long when children still run. Default 120000, max 300000.",
+			description:
+				"For wait: return after this long when children still run. Default 600000, min 60000, max 1200000.",
 		}),
 	),
 	olderThan: Type.Optional(Type.String({ description: "For prune: an age such as 30m, 12h or 7d. Default 7d." })),
@@ -376,7 +378,7 @@ export function createDelegateTasksTool(
 	return defineTool({
 		name: DELEGATE_TASKS_TOOL_NAME,
 		label: DELEGATE_TASKS_TOOL_NAME,
-		description: `Wait for, check, answer, cancel, review, accept or undo a child task that the delegate tool started. wait blocks until the running children stop and returns the <${REPORT_TAG}> notice, or says the tasks are still running after waitMs; then call it again or do other work. After a write task stops, diff shows its changes, accept keeps them and frees the scope, and undo restores the scope. Accept and undo also remove the task folder. prune removes old folders of stopped tasks. Use action models to discover available models, optionally for one provider.`,
+		description: `Wait for, check, answer, cancel, review, accept or undo a child task that the delegate tool started. wait blocks until the running children stop and returns the <${REPORT_TAG}> notice, or says the tasks are still running after waitMs; then call it again or do other work. Do not poll with status: it returns at once while children run, and each call sends the full context again. Use wait. After a write task stops, diff shows its changes, accept keeps them and frees the scope, and undo restores the scope. Accept and undo also remove the task folder. prune removes old folders of stopped tasks. Use action models to discover available models, optionally for one provider.`,
 		parameters: tasksSchema,
 		renderShell: "self",
 		reachesTools: () => [],
@@ -386,7 +388,7 @@ export function createDelegateTasksTool(
 			const action = input.action ?? "status";
 			try {
 				if (action === "wait") {
-					const waitMs = clamp(input.waitMs ?? DEFAULT_TASKS_WAIT_MS, 5000, MAX_TASKS_WAIT_MS);
+					const waitMs = clamp(input.waitMs ?? DEFAULT_TASKS_WAIT_MS, MIN_TASKS_WAIT_MS, MAX_TASKS_WAIT_MS);
 					if (input.taskId && !manager.get(input.taskId)) return unknownTask(input.taskId);
 					const ids = input.taskId ? new Set([input.taskId]) : undefined;
 					const outcome = await manager.waitForReport(waitMs, signal, ids);
@@ -434,7 +436,9 @@ export function createDelegateTasksTool(
 					if (open.length === 0)
 						return textResult("No task started by this session is active.", { status: "idle" });
 					const list = open.map((task) => `${task.taskId} (${task.agent}, ${task.status})`).join(", ");
-					return textResult(`Active tasks: ${list}`, { status: "list" });
+					return textResult(`Active tasks: ${list}. To wait for them, use action wait, not status.`, {
+						status: "list",
+					});
 				}
 
 				const taskId = input.taskId;

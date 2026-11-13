@@ -128,7 +128,7 @@ project agents: the manager asks the user once for each project agent in a sessi
 
 - [x] Registered as `delegate_tasks` (test/delegate-tools.test.ts, test/delegate-delivery.test.ts).
 - [x] Actions: `wait`, `status`, `cancel`, `diff`, `accept`, `undo`, `prune` (default `status`), plus the fork-added `answer` and `models` (test/delegate-tools.test.ts).
-- [x] `wait` blocks until children stop or `waitMs` elapses (default 120000, max 300000) (test/delegate-tools.test.ts, test/delegate-manager.test.ts; the still-running-after-timeout branch has no direct test).
+- [x] `wait` blocks until children stop or `waitMs` elapses (default 600000, min 60000, max 1200000) (test/delegate-tools.test.ts, test/delegate-manager.test.ts; the still-running-after-timeout branch has no direct test).
 - [x] `prune` removes old stopped task folders (`olderThan`, default `7d`) (test/delegate-tools.test.ts, delegate/tests/prune.test.ts).
 - [x] `models` lists the models of all providers or one provider through the CLI `models` command (test/delegate-tools.test.ts, test/delegate-transport.test.ts, delegate/tests/models.test.ts).
 - [x] `accept` keeps changes and frees the scope; `undo` restores the scope (`force` overwrites later edits) (delegate/tests/prune.test.ts, delegate/tests/workspace.test.ts).
