@@ -10,9 +10,14 @@ export const THINKING_FREE_MODELS = new Set(["zai/glm-5.3"]);
 export const COLD_GAP_MS: Record<string, number> = { zai: 3_600_000 };
 const MIN_RESULT_CHARS = 300;
 const MIN_ARG_CHARS = 200;
+export const CUT_TOOLS = new Set(["bash", "powershell"]);
+export const CUT_MAX_CHARS = 8000;
+export const CUT_LINE_CHARS = 400;
+const CUT_HEAD_LINES = 40;
+const CUT_TAIL_LINES = 30;
 
 const RECALL_DESCRIPTION =
-	"Old tool outputs and long write/edit texts are removed from the context to save space. Each removed item shows a marker with a ref. recall(ref) returns the exact original text at once, without running anything. When you need the exact content of a removed item, call recall instead of running the tool again. Run the tool again only when the content may have changed since then (for example, a file edited later or a command whose output changes).";
+	"Old tool outputs, long write/edit texts and the middle of long command outputs are removed from the context to save space. Each removed item shows a marker with a ref. recall(ref) returns the exact original text at once, without running anything. When you need the exact content of a removed item, call recall instead of running the tool again. Run the tool again only when the content may have changed since then (for example, a file edited later or a command whose output changes).";
 
 export type RecallStore = Map<string, string[]>;
 
@@ -40,6 +45,32 @@ function shrinkArgs(value: unknown, removed: string[], ref: string, key?: string
 		return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shrinkArgs(v, removed, ref, k)]));
 	}
 	return value;
+}
+
+export function cutOutput(text: string, ref: string): string | undefined {
+	let shortened = false;
+	const lines = text.split("\n").map((line) => {
+		if (line.length <= CUT_LINE_CHARS) return line;
+		shortened = true;
+		return `${line.slice(0, CUT_LINE_CHARS)}…[+${line.length - CUT_LINE_CHARS} chars]`;
+	});
+	const recall = `recall({"ref":"${ref}"}) returns the full output.`;
+	let out = lines.join("\n");
+	if (out.length > CUT_MAX_CHARS) {
+		if (lines.length > CUT_HEAD_LINES + CUT_TAIL_LINES) {
+			const removed = lines.length - CUT_HEAD_LINES - CUT_TAIL_LINES;
+			return [
+				...lines.slice(0, CUT_HEAD_LINES),
+				`[${removed} lines removed here. ${recall}]`,
+				...lines.slice(-CUT_TAIL_LINES),
+			].join("\n");
+		}
+		const half = CUT_MAX_CHARS / 2;
+		return `${out.slice(0, half)}\n[${out.length - CUT_MAX_CHARS} chars removed here. ${recall}]\n${out.slice(-half)}`;
+	}
+	if (!shortened) return undefined;
+	out += `\n[Long lines were shortened. ${recall}]`;
+	return out;
 }
 
 export function nextCut(messages: AgentMessage[]): number {
@@ -78,12 +109,15 @@ export function pruneContext(messages: AgentMessage[], store: RecallStore, cut: 
 			if (kept.length > 0) message.content = kept;
 			continue;
 		}
-		if (!old || message.role !== "toolResult") continue;
+		if (message.role !== "toolResult") continue;
+		const full = (message.details as { fullOutput?: string } | undefined)?.fullOutput;
+		if (full !== undefined) store.set(message.toolCallId, [...(store.get(message.toolCallId) ?? []), full]);
+		if (!old) continue;
 		const parts = message.content;
 		if (parts.some((c) => c.type !== "text")) continue;
 		const text = parts.map((c) => (c.type === "text" ? c.text : "")).join("\n");
 		if (text.length < MIN_RESULT_CHARS) continue;
-		store.set(message.toolCallId, [...(store.get(message.toolCallId) ?? []), text]);
+		if (full === undefined) store.set(message.toolCallId, [...(store.get(message.toolCallId) ?? []), text]);
 		const lines = text.split("\n");
 		const first = lines.find((l) => l.trim()) ?? "";
 		message.content = [
@@ -109,6 +143,23 @@ export function createContextPruneExtension(): ExtensionFactory {
 		});
 		pi.on("session_compact", () => {
 			compacted = true;
+		});
+		pi.on("tool_result", (event) => {
+			if (!CUT_TOOLS.has(event.toolName) || event.parentToolCallId) return;
+			const removed: string[] = [];
+			const content = event.content.map((c) => {
+				if (c.type !== "text") return c;
+				const cut = cutOutput(c.text, event.toolCallId);
+				if (cut === undefined) return c;
+				removed.push(c.text);
+				return { ...c, text: cut };
+			});
+			if (removed.length === 0) return;
+			return {
+				content,
+				details: { ...(event.details as object | undefined), fullOutput: removed.join("\n") },
+				structuredContent: event.structuredContent,
+			};
 		});
 		pi.on("context", (event, ctx) => {
 			const model = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "";
