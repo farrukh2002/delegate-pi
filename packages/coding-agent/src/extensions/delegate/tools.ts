@@ -273,6 +273,7 @@ export function createDelegateTool(
 		label: DELEGATE_TOOL_NAME,
 		description: [
 			"Run child coding agents in a fixed Linux filesystem sandbox with an isolated context.",
+			"Use this tool only when the user asks for subagents or child agents, or when the task has large, independent parts. Do questions, research, reviews and small tasks yourself.",
 			"Modes: single ({agent, task}), parallel ({tasks: [...]}, max 8), or chain ({chain: [...]}) which runs steps in order, replacing the {previous} placeholder in each step with the prior result.",
 			agents.length ? `Agents: ${agents.join(", ")}.` : "Use an agent name from the agent files.",
 			...(unavailable ? [unavailable] : []),
