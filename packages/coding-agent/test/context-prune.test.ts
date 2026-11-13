@@ -1,6 +1,15 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { describe, expect, it } from "vitest";
-import { isCold, nextCut, PRUNE_AGE, pruneContext, type RecallStore } from "../src/extensions/context-prune/index.ts";
+import {
+	CUT_LINE_CHARS,
+	CUT_MAX_CHARS,
+	cutOutput,
+	isCold,
+	nextCut,
+	PRUNE_AGE,
+	pruneContext,
+	type RecallStore,
+} from "../src/extensions/context-prune/index.ts";
 
 const big = (label: string) => `${label}\n${"x".repeat(400)}`;
 const HOUR = 3_600_000;
@@ -51,7 +60,48 @@ describe("isCold", () => {
 	});
 });
 
+describe("cutOutput", () => {
+	const numbered = (n: number, width = 150) => Array.from({ length: n }, (_, i) => `line ${i} ${"y".repeat(width)}`);
+
+	it("keeps short outputs unchanged", () => {
+		expect(cutOutput(numbered(30).join("\n"), "r1")).toBeUndefined();
+	});
+
+	it("keeps the first 40 and last 30 lines of a long output", () => {
+		const lines = numbered(200);
+		const out = cutOutput(lines.join("\n"), "r1")?.split("\n") ?? [];
+		expect(out.slice(0, 40)).toEqual(lines.slice(0, 40));
+		expect(out[40]).toBe('[130 lines removed here. recall({"ref":"r1"}) returns the full output.]');
+		expect(out.slice(41)).toEqual(lines.slice(-30));
+	});
+
+	it("shortens long lines and says so", () => {
+		const out = cutOutput(`ok\n${"z".repeat(CUT_LINE_CHARS + 50)}`, "r2") ?? "";
+		expect(out).toContain(`${"z".repeat(CUT_LINE_CHARS)}…[+50 chars]`);
+		expect(out.endsWith('[Long lines were shortened. recall({"ref":"r2"}) returns the full output.]')).toBe(true);
+	});
+
+	it("cuts the middle of a long output with few lines", () => {
+		const out = cutOutput(numbered(60, 300).join("\n"), "r3") ?? "";
+		expect(out.length).toBeLessThan(CUT_MAX_CHARS + 200);
+		expect(out).toContain('chars removed here. recall({"ref":"r3"})');
+	});
+});
+
 describe("pruneContext", () => {
+	it("serves the full text of a cut output from details, also after a stub", () => {
+		const messages = session(30);
+		const result = messages[2] as unknown as { details?: unknown; content: { text: string }[] };
+		result.details = { fullOutput: "FULL" };
+		const store: RecallStore = new Map();
+		pruneContext(messages, store, 0, "deepseek/deepseek-flash");
+		expect(store.get("c0")).toEqual(["FULL"]);
+		const later: RecallStore = new Map();
+		pruneContext(messages, later, nextCut(messages), "deepseek/deepseek-flash");
+		expect(later.get("c0")).toEqual(["FULL"]);
+		expect(result.content[0].text).toContain("[Removed output");
+	});
+
 	it("changes nothing without a cut on a model that keeps reasoning", () => {
 		const messages = session(30);
 		const before = structuredClone(messages);
