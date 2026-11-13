@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { formatReport, type Job, JobManager } from "../src/extensions/jobs/index.ts";
 
 type Run = { onData: (data: Buffer) => void; resolve: (code: number) => void; reject: (error: Error) => void };
@@ -17,7 +17,6 @@ function fakeExec() {
 }
 
 const dir = () => mkdtempSync(join(tmpdir(), "pi-jobs-test-"));
-const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("JobManager", () => {
 	it("hands a finished job to a waiting call and not to onFinish", async () => {
@@ -41,7 +40,7 @@ describe("JobManager", () => {
 		const manager = new JobManager(dir(), (job) => finished.push(job), exec);
 		manager.start("test", "/");
 		runs[0].resolve(2);
-		await tick();
+		await vi.waitFor(() => expect(finished).toHaveLength(1));
 		expect(finished.map((j) => j.state)).toEqual(["failed"]);
 		expect(manager.takeUnreported().map((j) => j.exitCode)).toEqual([2]);
 		expect(manager.takeUnreported()).toEqual([]);
@@ -62,7 +61,7 @@ describe("JobManager", () => {
 		const b = manager.start("b", "/");
 		const waiting = manager.wait([b.id], 60_000);
 		runs[0].resolve(0);
-		await tick();
+		await vi.waitFor(() => expect(manager.running()).toHaveLength(1));
 		runs[1].resolve(0);
 		expect((await waiting).map((j) => j.id)).toEqual([b.id]);
 		expect(manager.takeUnreported().map((j) => j.id)).toEqual(["j1"]);
@@ -74,7 +73,7 @@ describe("JobManager", () => {
 		const manager = new JobManager(dir(), (job) => finished.push(job), exec);
 		const job = manager.start("sleep", "/");
 		expect(manager.cancel(job.id)).toBe(true);
-		await tick();
+		await vi.waitFor(() => expect(job.state).toBe("cancelled"));
 		expect(job.state).toBe("cancelled");
 		expect(manager.cancel(job.id)).toBe(false);
 		expect(finished).toHaveLength(1);
