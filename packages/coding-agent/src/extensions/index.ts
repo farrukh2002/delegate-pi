@@ -3,6 +3,7 @@ import askExtension from "./ask/index.ts";
 import codemodeExtension from "./codemode/index.ts";
 import contextPruneExtension from "./context-prune/index.ts";
 import delegateExtension from "./delegate/index.ts";
+import jobsExtension from "./jobs/index.ts";
 import llamaExtension from "./llama/index.ts";
 import mcpExtension from "./mcp/index.ts";
 import statsExtension from "./stats/index.ts";
@@ -16,6 +17,7 @@ export const builtInExtensions: InlineExtension[] = [
 	{ name: "usage", factory: usageExtension, builtin: true },
 	{ name: "stats", factory: statsExtension, builtin: true },
 	{ name: "context-prune", factory: contextPruneExtension, builtin: true },
+	{ name: "jobs", factory: jobsExtension, builtin: true },
 	// Replaceable: an extension that registers `codemode`, `tool_search`, or `/mcp` (such as a third-party
 	// MCP extension) takes over instead of running alongside the built-in one.
 	{ name: "codemode", factory: codemodeExtension, replaceable: true, builtin: true },
