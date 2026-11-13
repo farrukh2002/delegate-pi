@@ -504,7 +504,7 @@ export function findCutPoint(
 // Summarization
 // ============================================================================
 
-const SUMMARIZATION_PROMPT = `The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
+export const SUMMARIZATION_PROMPT = `The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
 
 Use this EXACT format:
 

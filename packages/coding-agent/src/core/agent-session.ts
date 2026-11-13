@@ -66,15 +66,19 @@ import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth
 import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
 import { generateBugReportSummary } from "./bug-report.ts";
 import type { CacheWarmer, CacheWarmingStatus } from "./cache-warmer.ts";
+import { requestTail, type SessionRequest, summarizeFromRequest } from "./compaction/cached-summary.ts";
 import {
 	type CompactionPreparation,
 	type CompactionResult,
+	type CompactionSettings,
 	calculateContextTokens,
 	collectEntriesForBranchSummary,
 	compact,
+	computeFileLists,
 	estimateContextTokens,
 	estimateProjectedContextTokens,
 	estimateTokens,
+	formatFileOperations,
 	generateBranchSummary,
 	prepareCompaction,
 	shouldCompact,
@@ -131,6 +135,7 @@ import {
 	type SessionEntry,
 	SessionManager,
 	type SessionProjection,
+	sessionEntryToContextMessages,
 } from "./session-manager.ts";
 import {
 	applyToolModifiers,
@@ -278,6 +283,7 @@ export interface AgentSessionConfig {
 	modelRuntime: ModelRuntime;
 	/** Keeps the prompt cache entry of the last session request warm. */
 	cacheWarmer?: Pick<CacheWarmer, "cancel" | "status" | "onAgentSettled" | "onModeChanged" | "onWarmed">;
+	getLastSessionRequest?: () => SessionRequest | undefined;
 	/** Initial active built-in tool names. Default: [read, bash, edit, write] */
 	initialActiveToolNames?: string[];
 	/**
@@ -406,6 +412,16 @@ function getNextCycleIndex(
 	return direction === "forward" ? (currentIndex + 1) % length : (currentIndex - 1 + length) % length;
 }
 
+const PRECOMPUTE_START_RATIO = 0.75;
+
+interface PrecomputedSummary {
+	controller: AbortController;
+	leafId: string;
+	provider: string;
+	modelId: string;
+	promise: Promise<{ text: string; usage: Usage } | undefined>;
+}
+
 export class AgentSession {
 	readonly agent: Agent;
 	readonly sessionManager: SessionManager;
@@ -502,6 +518,8 @@ export class AgentSession {
 
 	private _modelRuntime: ModelRuntime;
 	private _cacheWarmer?: Pick<CacheWarmer, "cancel" | "status" | "onAgentSettled" | "onModeChanged" | "onWarmed">;
+	private _getLastSessionRequest?: () => SessionRequest | undefined;
+	private _precompute?: PrecomputedSummary;
 
 	// Tool registry for extension getTools/setTools
 	private _toolRegistry: Map<string, AgentTool> = new Map();
@@ -527,6 +545,7 @@ export class AgentSession {
 		this._cwd = config.cwd;
 		this._modelRuntime = config.modelRuntime;
 		this._cacheWarmer = config.cacheWarmer;
+		this._getLastSessionRequest = config.getLastSessionRequest;
 		if (this._cacheWarmer) {
 			this._cacheWarmer.onWarmed = (entry) => this._emit({ type: "entry_appended", entry });
 		}
@@ -1140,6 +1159,7 @@ export class AgentSession {
 
 	private async _emitAgentSettled(): Promise<void> {
 		this._cacheWarmer?.onAgentSettled();
+		if (!this._agentRunAbortRequested) this._startPrecompute();
 		this._isAgentRunActive = false;
 		this._isEmittingAgentSettled = true;
 		try {
@@ -1496,6 +1516,8 @@ export class AgentSession {
 			this._cacheWarmer.onWarmed = undefined;
 			this._cacheWarmer.cancel();
 		}
+		this._precompute?.controller.abort();
+		this._precompute = undefined;
 		cleanupSessionResources(this.sessionId);
 	}
 
@@ -2895,6 +2917,15 @@ export class AgentSession {
 		signal: AbortSignal,
 		reason: "manual" | "threshold" | "overflow",
 	): Promise<CompactionResult> {
+		const cached = reason === "overflow" ? undefined : this._cachedSummaryRequest(model);
+		if (cached) {
+			try {
+				const result = await this._summarizeFromCache(cached.request, cached.tail, signal, customInstructions);
+				return this._cachedCompactionResult(preparation, preparation.firstKeptEntryId, result);
+			} catch (error) {
+				if (signal.aborted) throw error;
+			}
+		}
 		// Resolve the request only when Pi summarizes itself: routing may call models or fail.
 		const request = await this._getSummarizationRequestAuth(model, signal);
 		return compact(
@@ -2911,6 +2942,103 @@ export class AgentSession {
 			this._summarizationRetryCallbacks({ source: "compaction", reason }),
 			undefined, // sessionId
 		);
+	}
+
+	private _cachedSummaryRequest(model: Model<any>): { request: SessionRequest; tail: AgentMessage[] } | undefined {
+		const request = this._getLastSessionRequest?.();
+		if (!request || request.model.provider !== model.provider || request.model.id !== model.id) return undefined;
+		const tail = requestTail(request, this.agent.state.messages);
+		return tail ? { request, tail } : undefined;
+	}
+
+	private _summarizeFromCache(
+		request: SessionRequest,
+		tail: AgentMessage[],
+		signal: AbortSignal,
+		customInstructions?: string,
+	): Promise<{ text: string; usage: Usage }> {
+		return summarizeFromRequest(
+			request,
+			tail,
+			(model, context, options) => this._modelRuntime.streamSimple(model, context, options),
+			signal,
+			customInstructions,
+		);
+	}
+
+	private _cachedCompactionResult(
+		preparation: CompactionPreparation,
+		firstKeptEntryId: string,
+		result: { text: string; usage: Usage },
+	): CompactionResult {
+		const { readFiles, modifiedFiles } = computeFileLists(preparation.fileOps);
+		return {
+			summary: result.text + formatFileOperations(readFiles, modifiedFiles),
+			firstKeptEntryId,
+			tokensBefore: preparation.tokensBefore,
+			usage: result.usage,
+			details: { readFiles, modifiedFiles },
+		};
+	}
+
+	private _precomputeState(
+		branch: SessionEntry[],
+		settings: CompactionSettings,
+		model: Model<any>,
+	): { fresh: boolean; firstKeptEntryId?: string } {
+		const pre = this._precompute;
+		if (!pre || pre.provider !== model.provider || pre.modelId !== model.id) return { fresh: false };
+		const leafIndex = branch.findIndex((entry) => entry.id === pre.leafId);
+		if (leafIndex < 0) return { fresh: false };
+		const after = branch.slice(leafIndex + 1);
+		if (after.some((entry) => entry.type === "compaction")) return { fresh: false };
+		const tailTokens = after
+			.flatMap((entry) => sessionEntryToContextMessages(entry))
+			.reduce((total, message) => total + estimateTokens(message), 0);
+		const limit = Math.max(settings.keepRecentTokens, (model.contextWindow - settings.reserveTokens) / 2);
+		if (tailTokens > limit) return { fresh: false };
+		const first = after.find((entry) => sessionEntryToContextMessages(entry).length > 0);
+		const startsTurn =
+			first !== undefined &&
+			sessionEntryToContextMessages(first).some(
+				(message) => message.role === "user" || message.role === "custom" || message.role === "bashExecution",
+			);
+		return { fresh: true, firstKeptEntryId: startsTurn ? first.id : undefined };
+	}
+
+	private _startPrecompute(): void {
+		const model = this.model;
+		if (!model) return;
+		const settings = this.settingsManager.getCompactionSettings(model);
+		if (!settings.enabled) return;
+		const leafId = this.sessionManager.getLeafId();
+		if (!leafId || this._precompute?.leafId === leafId) return;
+		if (this._precomputeState(this.sessionManager.getBranch(), settings, model).fresh) return;
+		const threshold = model.contextWindow - settings.reserveTokens;
+		if (estimateContextTokens(this.agent.state.messages).tokens < threshold * PRECOMPUTE_START_RATIO) return;
+		const cached = this._cachedSummaryRequest(model);
+		if (!cached) return;
+		this._precompute?.controller.abort();
+		const controller = new AbortController();
+		const promise = this._summarizeFromCache(cached.request, cached.tail, controller.signal).catch(() => undefined);
+		this._precompute = { controller, leafId, provider: model.provider, modelId: model.id, promise };
+	}
+
+	private async _usePrecompute(
+		preparation: CompactionPreparation,
+		branch: SessionEntry[],
+		model: Model<any>,
+		signal: AbortSignal,
+	): Promise<CompactionResult | undefined> {
+		const pre = this._precompute;
+		const { firstKeptEntryId } = this._precomputeState(branch, preparation.settings, model);
+		if (!pre || !firstKeptEntryId) return undefined;
+		const result = await new Promise<{ text: string; usage: Usage } | undefined>((resolve, reject) => {
+			signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+			pre.promise.then(resolve);
+		});
+		if (this._precompute === pre) this._precompute = undefined;
+		return result ? this._cachedCompactionResult(preparation, firstKeptEntryId, result) : undefined;
 	}
 
 	private _clearManualCompactionState(): void {
@@ -3327,13 +3455,11 @@ export class AgentSession {
 				details = extensionCompaction.details;
 			} else {
 				// Shared default summary generator, also used by manual compaction.
-				const compactResult = await this._runDefaultCompaction(
-					preparation,
-					model,
-					undefined,
-					abortController.signal,
-					reason,
-				);
+				const compactResult =
+					(reason === "threshold"
+						? await this._usePrecompute(preparation, pathEntries, model, abortController.signal)
+						: undefined) ??
+					(await this._runDefaultCompaction(preparation, model, undefined, abortController.signal, reason));
 				summary = compactResult.summary;
 				firstKeptEntryId = compactResult.firstKeptEntryId;
 				tokensBefore = compactResult.tokensBefore;
