@@ -3,6 +3,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { buildSessionProjection, convertToLlm, ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { CUT_TOOLS, cutOutput } from "../packages/coding-agent/src/extensions/context-prune/index.ts";
 import { activePath, DEFAULT_SESSIONS_DIR, listSessionFiles, loadEntries, tokens } from "./read-audit.mjs";
 
 const AGE = 10;
@@ -14,7 +15,7 @@ const ARMS = ["F", "R", "T", "P"];
 const RECALL_TOOL = {
 	name: "recall",
 	description:
-		"Old tool outputs and long write/edit texts are removed from the context to save space. Each removed item shows a marker with a ref. recall(ref) returns the exact original text at once, without running anything. When you need the exact content of a removed item, call recall instead of running the tool again. Run the tool again only when the content may have changed since then (for example, a file edited later or a command whose output changes).",
+		"Old tool outputs, long write/edit texts and the middle of long command outputs are removed from the context to save space. Each removed item shows a marker with a ref. recall(ref) returns the exact original text at once, without running anything. When you need the exact content of a removed item, call recall instead of running the tool again. Run the tool again only when the content may have changed since then (for example, a file edited later or a command whose output changes).",
 	parameters: { type: "object", properties: { ref: { type: "string", description: "The ref shown in the removed-item marker" } }, required: ["ref"] },
 };
 
@@ -86,6 +87,15 @@ function buildArm(projection, born, k, arm) {
 			if (msg.role === "system" && !addedRecall) {
 				msg = { ...msg, toolsAdded: [...(msg.toolsAdded ?? []), RECALL_TOOL] };
 				addedRecall = true;
+			} else if (kind === "C" && msg.role === "toolResult" && CUT_TOOLS.has(msg.toolName)) {
+				const content = (msg.content ?? []).map((c) => {
+					if (c.type !== "text") return c;
+					const cut = cutOutput(c.text, msg.toolCallId);
+					if (cut === undefined) return c;
+					evicted.push(c.text);
+					return { ...c, text: cut };
+				});
+				msg = { ...msg, content };
 			} else if (old && msg.role === "toolResult" && evictTools) {
 				const text = messageText(msg);
 				if (tokens(text.length) >= STUB_MIN_TOKENS) {
@@ -126,7 +136,58 @@ function buildArm(projection, born, k, arm) {
 	return { messages, evictedText: evicted.join("\n"), keptText: kept.join("\n") };
 }
 
+async function selectCutPoints(options) {
+	const byModel = new Map();
+	for (const file of await listSessionFiles(options.sessionsDir)) {
+		const entries = await loadEntries(file);
+		const pathEntries = activePath(entries);
+		const born = requestNumbers(pathEntries);
+		for (let i = 1; i < pathEntries.length; i++) {
+			const e = pathEntries[i];
+			const m = e.message;
+			if (e.type !== "message" || m?.role !== "assistant" || !m.usage) continue;
+			const removed = new Set();
+			const kept = new Set();
+			for (let j = i - 1; j >= 0; j--) {
+				const r = pathEntries[j].message;
+				if (pathEntries[j].type !== "message" || r?.role !== "toolResult") break;
+				if (!CUT_TOOLS.has(r.toolName)) continue;
+				for (const c of r.content ?? []) {
+					if (c.type !== "text") continue;
+					const cut = cutOutput(c.text, r.toolCallId);
+					if (cut === undefined) continue;
+					for (const w of wordsOf(c.text)) removed.add(w);
+					for (const w of wordsOf(cut)) kept.add(w);
+				}
+			}
+			if (removed.size === 0) continue;
+			const key = `${m.provider}/${m.model}`;
+			if (options.models.length && !options.models.includes(key)) continue;
+			const used = [...wordsOf(messageText(m))].filter((w) => removed.has(w) && !kept.has(w));
+			if (!byModel.has(key)) byModel.set(key, []);
+			byModel.get(key).push({ file, entries, born, entry: e, k: born.get(e.id), key, hard: used.length > 0, hardWords: used.slice(0, 10), evictedTokens: removed.size });
+		}
+	}
+	const points = [];
+	for (const [key, cands] of byModel) {
+		const hard = cands.filter((s) => s.hard);
+		const easy = cands.filter((s) => !s.hard);
+		const pick = [];
+		for (let i = 0; pick.length < options.perModel && (i < hard.length || i < easy.length); i++) {
+			for (const c of [hard[i], easy[i]]) {
+				if (!c || pick.length >= options.perModel || (options.distinct && pick.some((p) => p.file === c.file))) continue;
+				pick.push(c);
+			}
+		}
+		for (const p of pick) p.projection = buildSessionProjection(p.entries, p.entry.parentId);
+		points.push(...pick);
+		console.log(`${key}: ${hard.length} hard and ${easy.length} easy candidates, picked ${pick.length}`);
+	}
+	return points;
+}
+
 async function selectPoints(options) {
+	if (options.arms.includes("C")) return selectCutPoints(options);
 	const byModel = new Map();
 	for (const file of await listSessionFiles(options.sessionsDir)) {
 		const entries = await loadEntries(file);
