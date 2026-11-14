@@ -8,27 +8,29 @@ before it is built, the brief is filled out in detail, starting with p2's featur
 | 1 | Base and sessions | `01-base-and-sessions.md` | built, reviewed twice, waiting for the owner |
 | 2 | Apply from anywhere | `02-apply.md` | brief |
 | 3 | Talk to a session | `03-transcript.md` | brief |
-| 4 | Admission (Chord) | `04-admission.md` | designed |
-| 5 | People and apps | `05-people-and-apps.md` | designed in part |
-| 6 | Locks | `06-locks.md` | designed |
 | 7 | Models | `07-models.md` | brief |
 | 8 | Environments and coding tools | `08-environments.md` | brief |
 | 9 | Prompt | `09-prompt.md` | brief |
 | 10 | Agents | `10-agents.md` | brief |
-| 11 | Questions | `11-questions.md` | brief |
+| 18 | Session lifecycle | `18-session-lifecycle.md` | brief |
 | 12 | Files and artifacts | `12-files.md` | brief |
+| 19 | Workspace and terminals | `19-workspace.md` | brief |
+| 11 | Questions | `11-questions.md` | brief |
 | 13 | MCP | `13-mcp.md` | brief |
 | 14 | Views | `14-views.md` | brief |
 | 15 | Groupings | `15-groupings.md` | designed in part (talks) |
-| 16 | Web and terminal | `16-ui.md` | waiting for the team's Elanor port |
-| 17 | Org | `17-org.md` | later |
-| 18 | Session lifecycle | `18-session-lifecycle.md` | brief |
-| 19 | Workspace and terminals | `19-workspace.md` | brief |
 | 20 | Status, search and notices | `20-status-search.md` | brief |
 | 21 | Remote access, forwards and backups | `21-remote.md` | brief |
 | 22 | Discord, chat mode and voice | `22-channels.md` | brief |
+| 16 | Web and terminal | `16-ui.md` | waiting for the team's Elanor port |
+| 4 | Admission (Chord) | `04-admission.md` | designed |
+| 5 | People and apps | `05-people-and-apps.md` | designed in part |
+| 6 | Locks | `06-locks.md` | designed |
+| 17 | Org | `17-org.md` | later |
 
-The order may change as we learn; a reordering is a decision recorded in `../decisions.md`. Chord changes p3 needs
+Rows are in build order (the numbers are ids): p2's features first, then what p3 adds (decision "Implement and
+iterate, fundamentals first"). Each slice is small; where Chord makes a feature awkward, Chord is fixed in that slice. The
+order may change as we learn; a reordering is a decision recorded in `../decisions.md`. Chord changes p3 needs
 (lists and rows by key, pending Fable's study `chord-for-p3-fable.md` on slayer) get slices of their own when decided.
 
 ## p2's features by slice

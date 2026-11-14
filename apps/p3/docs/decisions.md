@@ -286,3 +286,9 @@ older entries that say `docs/<file>` or `apps/p3/docs/<file>` now are `apps/p3/d
   features of p2, but clean and extensible where appropriate"):** no audit of the conversation's history ("we'll
   encounter shit anyways"); instead each slice's details start with p2's features in its area (p2's code, the
   functionality map `apps/p2/docs/p3-functions/`), each built, carried to a named slice, or proposed to drop.
+- **Implement and iterate, fundamentals first (owner, 2026-11-14: "on paper is useless, might as well impl and iterate
+  until clean, each little finely scoped feature. fundamentals first, then the p3 additions we do not yet have in p2"):**
+  no paper design of Chord's primitives; each small feature is built, and where Chord makes it awkward, Chord is fixed
+  in that feature's slice until the plugin code is clean. Order: p2's features first (sessions, transcript, models,
+  environments and tools, prompt, agents, lifecycle, files, workspace, questions, MCP, views, groupings, status,
+  remote, channels, UI), then what p3 adds (admission, people and apps, locks, org).
