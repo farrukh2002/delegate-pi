@@ -36,7 +36,8 @@ import { shellFrame } from "./shell-bridge.ts";
  * this frame out of its snapshot, and p2-mac fades only its native views. No fade for what the page shows while it
  * starts (the first paint, the shell's hint, anything before the first frame was shown, the shell's `hello`, p2-mac's
  * first answer), an unchanged scheme, a hidden document, reduced motion, or a browser without view transitions. A
- * change during a fade starts a new one (the browser finishes the running one).
+ * change during a fade starts a new one (the browser finishes the running one). A page hidden right after a fade
+ * started shows the change without it: the browser skips the transition and still runs the DOM change.
  */
 
 export type ThemePreference = "system" | "light" | "dark";
@@ -211,14 +212,20 @@ function apply(show: Show): void {
 		document.visibilityState === "visible" &&
 		!window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 	showing = next;
-	if (!fade) paint();
-	else
-		try {
-			document.startViewTransition({ update: paint, types: ["pi-theme"] });
-		} catch {
-			// Browsers with view transitions but without types take only the update function.
-			document.startViewTransition(paint);
-		}
+	if (!fade) {
+		paint();
+		return;
+	}
+	let transition: ViewTransition;
+	try {
+		transition = document.startViewTransition({ update: paint, types: ["pi-theme"] });
+	} catch {
+		// Browsers with view transitions but without types take only the update function.
+		transition = document.startViewTransition(paint);
+	}
+	// A skipped transition (the page got hidden before the browser captured the old state) rejects `ready`; `paint`
+	// ran all the same, so there is nothing to report.
+	transition.ready.catch(() => {});
 }
 
 /** Writes the scheme last asked to show into the DOM. */

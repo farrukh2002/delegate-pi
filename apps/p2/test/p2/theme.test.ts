@@ -27,8 +27,9 @@ type Pending = { message: HostMessage; answer: (preference: unknown) => void };
 /**
  * Installs a browser: `stored` in localStorage, the system's scheme `dark` or not, framed by a shell when `framed` (the
  * server naming it when `meta`), with p2-mac's bridge when `native`, the shell's scheme hint `hint` kept by the inline
- * script. `fades`: view transitions (`"untyped"`: without types, as Safari 18.0), whose DOM changes wait for
- * `runFades()`; `hidden` and `reducedMotion` as named.
+ * script. `fades`: view transitions (`"untyped"`: without types, as Safari 18.0; `"skipped"`: the browser skips each,
+ * as when the page gets hidden right after its start), whose DOM changes wait for `runFades()`; `hidden` and
+ * `reducedMotion` as named.
  */
 function browser(options: {
 	stored?: string;
@@ -37,7 +38,7 @@ function browser(options: {
 	framed?: boolean;
 	native?: boolean;
 	hint?: string;
-	fades?: "typed" | "untyped";
+	fades?: "typed" | "untyped" | "skipped";
 	hidden?: boolean;
 	reducedMotion?: boolean;
 }) {
@@ -84,6 +85,8 @@ function browser(options: {
 						if (typeof argument === "function") fades.push({ types: undefined, update: argument });
 						else if (options.fades === "untyped") throw new TypeError("not a function");
 						else fades.push({ types: argument.types, update: argument.update });
+						const skipped = new DOMException("Skipping view transition", "InvalidStateError");
+						return { ready: options.fades === "skipped" ? Promise.reject(skipped) : Promise.resolve() };
 					},
 				};
 	self.parent = options.framed ? parent : self;
@@ -555,6 +558,24 @@ describe("theme", () => {
 			);
 			page.runFades();
 			assert.equal(page.shown(), "dark");
+		});
+
+		it("shows the change of a fade the browser skipped, without an unhandled rejection", async () => {
+			const page = browser({ fades: "skipped" });
+			const unhandled: unknown[] = [];
+			const record = (reason: unknown) => unhandled.push(reason);
+			process.on("unhandledRejection", record);
+			try {
+				start();
+				page.frame();
+				setTheme("dark");
+				page.runFades();
+				// Node reports an unhandled rejection after the microtasks of the turn that made it.
+				await new Promise((resolve) => setImmediate(resolve));
+			} finally {
+				process.off("unhandledRejection", record);
+			}
+			assert.deepEqual([unhandled, page.shown()], [[], "dark"]);
 		});
 
 		it("does not fade the shell's hint or hello, and fades its later changes", () => {
