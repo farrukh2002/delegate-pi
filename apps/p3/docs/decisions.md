@@ -291,3 +291,41 @@ older entries that say `docs/<file>` or `apps/p3/docs/<file>` now are `apps/p3/d
   clean ("on paper is useless" for p3's features). How Chord must change comes from Fable's analysis of p2's features
   and p3's planned ones: the small set of primitives that lets all of them be built cleanly ("directionally chord is
   likely ok, unless fable has a brilliant new idea that simplifies everything").
+- **Recovering a person who lost their only device (owner, 2026-11-14):** a person signed in on one device only (no
+  identity provider, no paired device) who loses that sign-in cannot get back in alone; that is accepted, as long as the
+  owner can send a new invite that binds to the same person (their sessions and data stay theirs). Slice 5 builds it.
+- **Persons, guests and links (owner, 2026-11-14, voice):** there is one kind of person; what a person reaches is data,
+  never their principal. The principal kinds stay `owner`, `person`, `worker`, `server` (no `guest` kind: a kind of its
+  own would make every plugin care). Two kinds of rows point at a person: an app membership (person, app, role) and a
+  session share (person, session, read or write); anyone may have both. A session shared with someone already on the
+  Pi needs no invite: a share row is added. One link mechanism with a target and a use rule: an app invite (join app
+  X as role R, single use by default) and a session share link (session S, read or write, reusable until revoked, as
+  p2's share link). Opening a link: sign in as yourself, or pick a name, which creates a temporary person (device
+  only, marked as made by that link). Every share made from a link points back to it; revoking the link deletes them
+  all, and every temporary person who came only through it is deleted with their sign-in ended; changing the link
+  from write to read changes all its shares. What a deleted person wrote stays readable (entries store the author's
+  name). A temporary person may bind a Radius login (to sign in on other devices); that does not make them permanent:
+  only something the owner gives them (a membership) keeps them when the link goes.
+- **Admission returns the variant (owner, 2026-11-14, voice; refines "Admission before the factory"):** `admit` takes
+  the principal, reads the data it needs and returns a variant or a denial; the factory builds that variant. No
+  separate "level" vocabulary. Many plugins in one session ask the same question, so the sessions plugin answers it
+  once (read or write, from the app's rule and the shares) and each plugin's `admit` turns that answer into its own
+  variant. Plugins never look at principal kinds; app-specific permissions (a coach and a player) live only in the
+  app's own plugins and their own admissions.
+- **Admission hands the factory its data (owner, 2026-11-14, voice; supersedes "Admission returns the variant" of the
+  same day):** factories are synchronous, so admission is where data about the caller is read; it returns a typed
+  value the contract declares (the variant one field of it, plus what the object needs about this caller: role, team,
+  memberships), and the factory gets that value. Equal values change nothing; a different one rebinds. Every object
+  type may take an admission, an app's own stores and objects included; an app defines one and reuses it. Recorded
+  in `packages/chord/docs/admission/design.md` §0 with its open points.
+- **Slice 0 changes Chord first; the kit moves into p3 (owner, 2026-11-14):** before slice 1 is redone, a Chord slice
+  ("slice 0") adds admission that hands the factory a typed value and named queries any object on the store's host
+  can run live (range, total). Its design is reviewed by Opus, Sol and Astra (twice) before the owner; a concise
+  explainer of the additions follows the reviewed design. The app kit (`packages/chord/src/node/app`) is copied into
+  p3 as base code and changed there; Chord keeps its general components (workers, HTTP, plugin loading, surfaces);
+  the kit stays in Chord only while p2 uses it and goes when p3 is done (supersedes "Keep the app kit, change it
+  where it does not fit", 2026-11-06). No deadline planning from agents' estimates ("agents suck at estimates").
+- **A session's state and last touch are session facts (owner, 2026-11-14):** working, waiting, settled, failed and
+  the last-touch time are columns of the session row, owned and written by the sessions plugin on transitions; the
+  status plugin keeps only hot details (current step, progress). Script rollups may come back later over the active
+  set only (open).
