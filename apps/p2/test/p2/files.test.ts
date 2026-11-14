@@ -15,6 +15,7 @@ import { DownloadStore, type Uploaded } from "../../plugins/files/contract.ts";
 import { type Session, Sessions } from "../../plugins/sessions/contract.ts";
 import { Sharing } from "../../plugins/sharing/contract.ts";
 import type { RefIn } from "../../src/runtime/chord.ts";
+import { shownImage } from "../../src/runtime/entry-images.ts";
 import { type Fixture, holdIn, http, poll, startFixture, until } from "./helpers.ts";
 
 const PNG = Buffer.from(
@@ -138,9 +139,19 @@ describe("files (fake provider)", () => {
 		assert(note?.type === "text" && note.text.includes(textPath) && note.text.includes(imagePath));
 		assert.equal(await readFile(textPath, "utf8"), "hello");
 		assert.equal((await stat(textPath)).mode & 0o777, 0o600);
-		// The fake model accepts images, so the PNG is also inlined.
+		// The fake model accepts images, so the PNG is also inlined; the view carries a reference to it, which loads it.
 		const inline = content.find((part) => part.type === "image");
-		assert(inline?.type === "image" && inline.mimeType === "image/png" && inline.data === PNG.toString("base64"));
+		assert(inline?.type === "image");
+		const shown = shownImage(inline);
+		assert.deepEqual(
+			{ ...inline, src: "" },
+			{ type: "image", mimeType: "image/png", src: "", width: 1, height: 1 },
+			"a reference, without the bytes",
+		);
+		const loaded = await fixture.http(shown.src);
+		assert.equal(loaded.status, 200);
+		assert.equal(loaded.headers["content-type"], "image/png");
+		assert.deepEqual(loaded.bytes, PNG);
 	});
 
 	it("fits an inline image to the model's limits, noting what changed next to its file", async () => {
@@ -153,10 +164,50 @@ describe("files (fake provider)", () => {
 		assert(note?.type === "text", "the attachments note");
 		assert.match(note.text, /wide\.png, \d+ bytes\) \[Resized from 2400x8 to 2000x7\. Multiply coordinates by 1\.20/);
 		const inline = content.find((part) => part.type === "image");
-		assert(inline?.type === "image" && inline.mimeType === "image/png");
+		assert(inline?.type === "image");
+		const shown = shownImage(inline);
+		assert.deepEqual([shown.mimeType, shown.width, shown.height], ["image/png", 2000, 7]);
 		// IHDR: width and height, big-endian, at bytes 16 and 20.
-		const png = Buffer.from(inline.data, "base64");
+		const png = (await fixture.http(shown.src)).bytes;
 		assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [2000, 7]);
+	});
+
+	it("serves an entry's image to whoever may view the session, and to nobody else", async () => {
+		const view = await until(chat.view, (value) => userMessages(value).length > 0);
+		const inline = userMessages(view)[0]?.content;
+		assert(Array.isArray(inline));
+		const image = inline.find((part) => part.type === "image");
+		assert(image?.type === "image");
+		const src = shownImage(image).src;
+		const place = new URL(src, "http://localhost").searchParams;
+		const at = (changes: Record<string, string>) =>
+			`/entry-image?${new URLSearchParams({ ...Object.fromEntries(place), ...changes })}`;
+		// `Chat.entries` pages carry the same reference.
+		const id = Number(place.get("entry"));
+		const page = await chat.entries({ minEntryId: id, maxEntryId: id, limit: 1 }, BACKGROUND_CONTEXT);
+		const paged = page.items[0]?.model?.[0];
+		assert(paged?.role === "user" && Array.isArray(paged.content));
+		const pagedImage = paged.content.find((part) => part.type === "image");
+		assert(pagedImage?.type === "image" && shownImage(pagedImage).src === src);
+		const head = await fixture.http(src, { method: "HEAD" });
+		assert.equal(head.status, 200);
+		assert.equal(head.headers["content-length"], String(PNG.byteLength));
+		assert.equal(head.body, "");
+		assert.match(String(head.headers["cache-control"]), /immutable/);
+		assert.equal(head.headers["x-content-type-options"], "nosniff");
+		assert.equal((await fixture.http(src, { headers: { "Sec-Fetch-Site": "cross-site" } })).status, 403);
+		assert.equal((await fixture.http(at({ part: "-1" }))).status, 400);
+		assert.equal((await fixture.http(at({ entry: "x" }))).status, 400);
+		assert.equal((await fixture.http(at({ part: "99" }))).status, 404, "no image there");
+		assert.equal((await fixture.http(at({ session: other.id }))).status, 404, "another session's entries");
+		const viewer = await guestCookie("view");
+		const get = (path: string, cookie: string) =>
+			http(fixture.server.port, path, { headers: { ...TUNNEL, Cookie: cookie } });
+		const guest = await get(src, viewer);
+		assert.equal(guest.status, 200);
+		assert.deepEqual(guest.bytes, PNG);
+		assert.equal((await get(at({ session: other.id }), viewer)).status, 403, "a guest of another session");
+		assert.equal((await get(src, "")).status, 403, "not signed in");
 	});
 
 	it("leaves out an image attachment that cannot be decoded, saying so next to its file", async () => {

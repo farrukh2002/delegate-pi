@@ -1,5 +1,5 @@
 import type { JsonValue } from "@earendil-works/chord/json";
-import type { AssistantMessage, ImageContent, ToolResultMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@earendil-works/pi-ai";
 import type {
 	AgentState,
 	CompactionFailure,
@@ -14,6 +14,7 @@ import type {
 } from "@earendil-works/pi-durable";
 
 import { type AgentMessage, agentMessage, peerMessage } from "../runtime/entries.ts";
+import { type ShownImage, shownImage } from "../runtime/entry-images.ts";
 
 type ConversationPeer = { id: string; title: string };
 
@@ -38,7 +39,7 @@ export type ToolView = {
 	status: ToolStatus;
 	output: string;
 	details?: JsonValue;
-	images: ImageContent[];
+	images: ShownImage[];
 	/**
 	 * Calls this call made to other tools, in creation order: Durable's live nested slots, or the last ones this browser
 	 * saw (see `nestedCalls`). The tool's contribution may give its own list from the result (`ToolActivity.nestedCalls`).
@@ -72,7 +73,7 @@ export type Item =
 			peer?: Pick<ConversationPeer, "id" | "title">;
 			/** A subagent's message (its report, a question or a note), from the entry's data. */
 			agent?: Pick<AgentMessage, "from" | "intent">;
-			images: ImageContent[];
+			images: ShownImage[];
 			files: string[];
 			/** The entry this item shows; absent for queued items. */
 			entryId?: number;
@@ -131,6 +132,11 @@ function text(content: string | readonly { type: string; text?: string }[]): str
 				.join("\n");
 }
 
+/** The images of a message's content as shown (references from the chat view, src/runtime/entry-images.ts). */
+function imagesOf(content: readonly (TextContent | ImageContent)[]): ShownImage[] {
+	return content.flatMap((part) => (part.type === "image" ? [shownImage(part)] : []));
+}
+
 function resultTool(result: ToolResultMessage, name = result.toolName): ToolView {
 	return {
 		id: result.toolCallId,
@@ -139,7 +145,7 @@ function resultTool(result: ToolResultMessage, name = result.toolName): ToolView
 		status: result.isError ? "error" : "done",
 		output: text(result.content),
 		details: result.details as JsonValue | undefined,
-		images: result.content.filter((part) => part.type === "image"),
+		images: imagesOf(result.content),
 		...(typeof result.durationMs === "number" ? { durationMs: result.durationMs } : {}),
 		at: result.timestamp - (result.durationMs ?? 0),
 	};
@@ -328,7 +334,7 @@ export function buildTranscript(
 	const personItem = (
 		entry: EntryRecord,
 		person: MessageData,
-		images: ImageContent[],
+		images: ShownImage[],
 		chat: boolean,
 		at?: number,
 	): Item => ({
@@ -397,8 +403,7 @@ export function buildTranscript(
 		} else if (message?.role === "user") {
 			items.push(
 				...cachedItems(entry, [display], () => {
-					const images =
-						typeof message.content === "string" ? [] : message.content.filter((part) => part.type === "image");
+					const images = typeof message.content === "string" ? [] : imagesOf(message.content);
 					// A person's input from its data.
 					const at = message.timestamp;
 					const person = messageData(entry.data);

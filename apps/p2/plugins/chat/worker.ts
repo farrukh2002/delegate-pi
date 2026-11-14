@@ -32,10 +32,12 @@ import {
 	defineFacet,
 	defineTypedState,
 	deriveTyped,
+	entryImageRefs,
 	expectVariant,
 	type Factory,
 	forbidden,
 	INPUT_ENTRY,
+	imageAt,
 	isGuest,
 	isOwner,
 	type MessageData,
@@ -62,6 +64,7 @@ import { StatusReport } from "../status/contract.ts";
 import {
 	Chat,
 	ChatCosts,
+	ChatImages,
 	Conversation,
 	type EntriesPage,
 	type ModelMeta,
@@ -166,10 +169,15 @@ export default defineFacet((host) => {
 				() => {},
 			);
 			// Durable's default window (the newest 50, appends, back to 50 past 100), shared by every viewer.
-			const view = deriveTyped(
+			const durableView = deriveTyped(
 				self,
 				[self.follow((observer, ctx) => harness().durable.observeConversation(id, observer, ctx))],
 				([value]) => value as ConversationView | null,
+			);
+			const withRefs = entryImageRefs(worker().init.values.session.id, conversation);
+			/** The window as clients get it: image parts are references, their bytes stay here (`image`). */
+			const view = deriveTyped(self, [durableView], ([value]) =>
+				value === null ? null : { ...value, entries: value.entries.map(withRefs) },
 			);
 			const modelState = deriveTyped(self, [view, config], ([value]) => modelMeta(value));
 			/**
@@ -180,12 +188,12 @@ export default defineFacet((host) => {
 			 */
 			const tally = new ContextTally();
 			let counted = false;
-			self.on(view, async ({ value }, ctx) => {
+			self.on(durableView, async ({ value }, ctx) => {
 				if (!value) return;
 				if (!counted || !tally.advance(value)) {
 					tally.reset(await conversationResource.value.conversation.context(ctx));
 					counted = true;
-					const newest = view.value;
+					const newest = durableView.value;
 					if (newest) tally.advance(newest);
 				}
 				const next = tally.stats;
@@ -326,18 +334,32 @@ export default defineFacet((host) => {
 						undefined,
 						ctx,
 					);
-					// Cut at about a megabyte (images make entries large); the loader asks again from where it ends.
+					// Cut at about a megabyte (long outputs make entries large); the loader asks again from where it ends.
 					const items: EntryRecord[] = [];
 					let bytes = 0;
 					for (const entry of page.items) {
 						if (items.length > 0 && bytes >= ENTRIES_PAGE_BYTES) break;
-						items.push(entry);
-						bytes += JSON.stringify(entry).length;
+						const shown = withRefs(entry);
+						items.push(shown);
+						bytes += JSON.stringify(shown).length;
 					}
 					return {
 						items,
 						more: items.length < page.items.length || page.next !== undefined,
 					} satisfies EntriesPage;
+				},
+				image: async (place, ctx) => {
+					const entryId = place.entry as EntryId;
+					const page = await target().conversation.entries(
+						{ minEntryId: entryId, maxEntryId: entryId },
+						1,
+						undefined,
+						ctx,
+					);
+					const entry = page.items[0];
+					const image = entry === undefined ? undefined : imageAt(entry, place);
+					if (image === undefined) throw new Error("No such image");
+					return { mimeType: image.mimeType, data: image.data };
 				},
 				configure: async ({ model, thinkingLevel }, ctx) => {
 					if (model && !models()?.getModel(model.provider, model.modelId)) throw new Error("Unknown model");
@@ -500,4 +522,9 @@ export default defineFacet((host) => {
 		return { variant: "viewer", members: { costs: (ctx) => chat.costs(ctx) } };
 	});
 	host.serve(Chat, chatFactory);
+	host.serve(ChatImages, ({ conversation }, principal, self) => {
+		if (principal.kind !== "server") throw forbidden("server only");
+		const chat = self.get(Conversation, { conversation });
+		return { variant: "server", members: { image: (place, ctx) => chat.image(place, ctx) } };
+	});
 });

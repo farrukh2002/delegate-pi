@@ -1102,8 +1102,9 @@ call, hold, method, relay and activation; nothing is measured or walked for it. 
   Stop/dequeue restore text only to its author; removing a queued input (×,
   no restore) discards it, as in Pi Mobile.
 - **Windowed conversation view** (`plugins/chat/worker.ts`, `src/web/history.ts`, `src/runtime/conversation-stats.ts`):
-  `Chat.view` is Durable's view as is: a window over the transcript (the fork-aware history in entry ID order, head
-  markers in place), the newest 50 entries, then appends, back to 50 past 100, `before` the entry just before it. The
+  `Chat.view` is Durable's view with image references: a window over the transcript (the fork-aware history in entry
+  ID order, head markers in place), the newest 50 entries, then appends, back to 50 past 100, `before` the entry just
+  before it. The
   worker holds one Durable watch per conversation (default window), shared by every viewer. Clients (web and TUI)
   keep a `TranscriptStore` per host and conversation over Durable's `ConversationTranscript`: every value of the view
   is merged in, so entries that leave the window stay; scrolling up loads earlier pages (`Chat.entries`, 100 entries
@@ -1121,6 +1122,14 @@ call, hold, method, relay and activation; nothing is measured or walked for it. 
   sheet reads `ChatCosts`, from `context()` when it opens. Measured with 3,000 seeded entries (fake provider, slayer):
   opening sends 50 entries (125 KiB, 14 ms) instead of 101 (251 KiB, 33 ms); paging to the start 30 pages, 244 ms
   (before: 29, 186 ms); building the whole transcript 1.3 ms (before: 10.9 ms).
+- **Image references** (`src/runtime/entry-images.ts`, `plugins/chat/server.ts`): the view's and `Chat.entries`'s
+  image parts are `{ type: "image", mimeType, src, width, height }` instead of base64 data; pages load them from
+  `GET /entry-image?session&conversation&entry&message&part` (viewers of the session only, same-site, cached as
+  immutable), which reads the entry through `ChatImages` on the worker. Why: a window of 50 entries with screenshots
+  came to 38 MB, past a page link's part limit, so the session could not be opened; through Radius the brain's loopback
+  socket closed on it and the page reconnected in a loop. Clients read image parts through `shownImage` (inline parts
+  of kept copies become data URLs). Pages take parts up to 32 MiB from the server (`SERVER_PART_LIMITS`, Chord's
+  default is 16 MiB); Radius's relay limits one data message to 32 MiB by default (Radius ee560a41; 16 MiB before).
 - **Run failures** (`pi.live.runFailure`): why the newest run ended without an answer shows as a failure notice at the
   end of the transcript (web and TUI, the error notice style) until the next run starts: `model_error` and `no_model`
   "The model could not answer this input. <detail>", `faulted` "The run failed: <detail>", `orphaned` "The run could
