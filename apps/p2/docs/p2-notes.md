@@ -981,9 +981,10 @@ call, hold, method, relay and activation; nothing is measured or walked for it. 
     backgrounds (Elanor's ghost fills) span the row; the label's hit area covers it. Labels are one line, cut with "…" at
     the end (`.nav-label`). No leading disclosure column, so nothing is indented by it: a group's row shows or hides
     its sessions, not indented (every session's working mark is in one column); a group's row is medium weight. The
-    owner's list starts with a "New session" row in a group's type ("+" marker, a link to `/new`, the new-session
-    screen, selected while it shows); the header holds the Pi logo (the Familiar's button) and the
-    collapse trigger. A session's row is a link to its main conversation,
+    owner's list starts with the rows plugins put there (the `sidebar-start:<name>` slots, each a list item: the
+    Familiar's "Ask Pi") and a "New session" row, all in a group's type ("+" marker, a link to `/new`, the new-session
+    screen, selected while it shows), 16px above the first rollup (rollups are 24px apart); the header holds the Pi
+    logo and the collapse trigger. A session's row is a link to its main conversation,
     selected while that shows (the label's hit area covers the row: the label is not positioned, so its `::after` is
     laid out on the row). Its other conversations (its branches, then its subagents and one-shot agents, the most
     recently active first) are below it, shown or hidden only by its chevron (`Toggle`, a button after the label;
@@ -998,7 +999,7 @@ call, hold, method, relay and activation; nothing is measured or walked for it. 
   - **State marks** (`Row.tsx`, the top of `style.css`): a row says two things in two places. The marker says whether
     a session runs: `IconMarker` frames the row's icon (a glyph, a folder, a lock) with a dash travelling around it
     (22px, 3px outside the icon, clear of a glyph's corner cells), `WorkingMark` is a spinner where a row has no icon (a
-    group's sessions, conversations, the Familiar's logo, a collapsed rollup's details). That is the sidebar's only
+    group's sessions, conversations, a collapsed rollup's details). That is the sidebar's only
     motion. The row's end says whether it wants the owner, steady: an unread answer makes the title bold
     (`.session-title.unread`) with a blue dot before the time (`UnreadMark`); a failed worker shows a warning sign and
     "Failed" (`FailedMark`, the error in its tooltip). Each state has its own shape, not only a colour (spinner or
@@ -1564,9 +1565,11 @@ call, hold, method, relay and activation; nothing is measured or walked for it. 
   worker runs; an idle worker stops after 5 minutes without viewers or warming) and at each start, else in an
   `InputGate` before the next input is admitted, which waits for the summary. Web: home (the `home` slot: `/` replaces
   itself with its session, made on first use; while the owner has it archived, with the new-session screen) and the
-  `drawer-brand` slot, the Pi logo at the start of the owner's sidebar header (a button titled "Ask Pi" that opens it,
-  restoring it when archived; the session's working spinner or unread dot on its corner); the sessions plugin's `DrawerRowsContext` (`plugins/sessions/contract.web.tsx`) gives it the
-  rows, `SessionDot` and `listApart`, which leaves its session out of the rollups. The TUI lists it as an ordinary session. Tests:
+  `sidebar-start:familiar` slot, the "Ask Pi" row above the owner's "New session" (the Pi logo as its icon, framed
+  while its session works; bold with a dot for an unread answer; it opens the session, restoring it when archived); the
+  sessions plugin's web contract (`plugins/sessions/contract.web.tsx`) gives it the rows and `listApart`
+  (`DrawerRowsContext`), which leaves its session out of the rollups, and the row's shape and marks (`NavRow`,
+  `IconMarker`, `UnreadMark`). The TUI lists it as an ordinary session. Tests:
   `familiar.test.ts`, `ui-familiar.test.ts`, the conversations actions in `conversations.test.ts`.
 - **Scope prompt** (`plugins/scope-prompt`, experiment; owner only, web only): an overlay (`overlay:` slots, the
   `SlotList` at the end of `AppLayout`) that leaves the page as it is until pointing mode is on (`mode.ts`): a double tap
@@ -1587,7 +1590,7 @@ call, hold, method, relay and activation; nothing is measured or walked for it. 
   stages the `<scope>` block on the session (`ScopeStage`, worker facet, by `requestId`, dropped after a minute) and
   the views' send router carries it with that message (`MessageContexts`, which now get the routed input), so the
   transcript shows the text with the note "with scope Chat › Message". Anything else (the sidebar) goes to the
-  Familiar: opened as its logo does, the text queued on its main conversation followed by the block with the page's
+  Familiar: opened as its sidebar row does, the text queued on its main conversation followed by the block with the page's
   session, conversation and title or list, which its prompt section explains. Not yet: frames' insides (an html
   artifact is its pane). Test: `ui-scope-prompt.test.ts`.
 - **Subagents** (`plugins/subagents`): owns its protocol-independent Durable extension (persistent
