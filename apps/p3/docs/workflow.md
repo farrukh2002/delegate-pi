@@ -7,7 +7,11 @@ does the final review.
 
 1. **Brief.** Every slice has a brief in `slices/` from the start: its goal, what it builds, what it depends on, what
    to read, what is decided and what is open. Briefs are short.
-2. **Details.** Before building, the builder fills out the brief in detail: the files, the contracts and objects (only
+2. **Details.** Before building, the builder fills out the brief in detail. It starts with **p2's features** in the
+   slice's area: read from p2's current code (its plugins), with `apps/p2/docs/p3-functions/` (the functionality map,
+   2026-11-10) as the start; every feature is listed and either built by the slice, carried to a named slice, or
+   proposed to drop (the owner decides). p3 builds them clean (no p2 structure carried over) and extensible where
+   appropriate (a registry or a plugin seat where other plugins will want to add). Then: the files, the contracts and objects (only
    real Chord and kit APIs, named by file, or defined right there), how it works, the tests case by case, the numbers
    it must meet (below), and a "Read first, in full" list (below). For every part: could a third-party plugin provide
    this, or an alternative, the same way? Docs are committed without review.

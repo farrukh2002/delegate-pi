@@ -282,3 +282,7 @@ older entries that say `docs/<file>` or `apps/p3/docs/<file>` now are `apps/p3/d
   (2026-11-14, private: `research/p3-people-2026-11-13/resources-vs-locks-adm-fable.md`) recommends locks (one owner
   leaves only restriction; several times smaller to build and for plugin authors) and three of its ideas for locks,
   open in slice 6.
+- **Slices give p2's features, clean (owner, 2026-11-14: "we need a clear spec for each slice that ensures we have the
+  features of p2, but clean and extensible where appropriate"):** no audit of the conversation's history ("we'll
+  encounter shit anyways"); instead each slice's details start with p2's features in its area (p2's code, the
+  functionality map `apps/p2/docs/p3-functions/`), each built, carried to a named slice, or proposed to drop.

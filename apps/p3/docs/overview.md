@@ -55,17 +55,17 @@ API v1 (shared, server, worker, web, terminal modules), `server.ts` (the server)
 | views | pane kinds, layouts, slots, the workbench; collaborative views are plugins with server objects, state and events |
 | groupings | the sidebar's groupings as plugins: recent, by folder, projects, sections by state, rollups; pins and archive for every grouping |
 | org | enrollment, the org profile (later) |
+| workspace, terminals | the project's files, git, the file index; PTYs and their viewers |
+| status, search, logs | what runs where without starting a worker; message search; notices |
+| radius, ports, backup | the relay, forwards, whole-Pi backups |
+| discord, chat-mode, voice | sessions talked to from elsewhere and in other ways |
 
 **UI:** the web page on Elanor (Earendil's React design system) and the terminal client, waiting for the team's UI
 work (owner, 2026-11-14).
 
-**Not yet sliced** (from p2 and earlier step lists): terminals, ports, the workspace and file index, search, Discord,
-Radius (relay, remote access, whole-Pi backups), voice, the telemetry viewer, drafts,
-status, session delete, export, import and fork, stats; and base pieces: the wake bridge and worker liveness
-(Durable's wake state to the server), secrets, backup and restore with the supervisor, tunnel ingress and a public
-origin, the agent's typed surface. Sources: `archive/base-inventory/base-inventory-sol.md` §4 and `merged.md` §2.
-
-**Tests:** the test topology (server and workers in one process), the faux model, a few end-to-end runs.
+**Not yet sliced:** the base pieces the wake bridge and worker liveness (Durable's wake state to the server; slices 3
+or 11), secrets (slice 7), the agent's typed surface (slices 10 and 14). Every domain of p2's functionality map has a
+slice (`slices/README.md`, "p2's features by slice").
 
 ## In what order
 
