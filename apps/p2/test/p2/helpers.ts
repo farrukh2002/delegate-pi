@@ -19,6 +19,7 @@ import {
 } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { NativeWatchable, Watchable } from "@earendil-works/chord/watch";
+import type { ImageProcessor } from "@earendil-works/pi-durable/tools";
 import { WebSocket as NodeWebSocket } from "ws";
 import { type P2Server, type ServerOptions, startServer } from "../../src/hosts/server.ts";
 import {
@@ -358,6 +359,13 @@ const NO_WORKERS: SessionWorkerControl = {
 	observe: () => ({ value: {}, detach: () => {} }),
 };
 
+/** The image processor of test workers: one that is asked to prepare an image fails the test. */
+export const NO_IMAGES: ImageProcessor = {
+	prepare: async () => {
+		throw new Error("no image processor in this test worker");
+	},
+};
+
 /**
  * A worker host's natives for a bare test host (`kind: "worker"`): the session's Harness (`harnessOf`) and the worker
  * process (`workerOf`). Unset parts are inert: no location moves, liveness counts nothing, roots run on `TEST`.
@@ -384,6 +392,7 @@ export function workerFacet(parts: {
 			copyFilesTo: async () => {
 				throw new Error("no files in this test worker");
 			},
+			images: NO_IMAGES,
 			...parts.worker,
 		});
 	});

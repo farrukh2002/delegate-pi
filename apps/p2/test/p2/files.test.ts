@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import { crc32, deflateSync } from "node:zlib";
 import type { UserMessage } from "@earendil-works/pi-ai";
 import type { ConversationView } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@p2/app/v1";
@@ -21,6 +22,31 @@ const PNG = Buffer.from(
 	"base64",
 );
 const TUNNEL = { Host: "share.test", Origin: "https://share.test" };
+
+/** A `width` by `height` grey PNG (8-bit, unfiltered rows). */
+function greyPng(width: number, height: number): Buffer {
+	const chunk = (type: string, data: Buffer): Buffer => {
+		const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+		const framing = Buffer.alloc(8);
+		framing.writeUInt32BE(data.length, 0);
+		framing.writeUInt32BE(crc32(body), 4);
+		return Buffer.concat([framing.subarray(0, 4), body, framing.subarray(4)]);
+	};
+	const header = Buffer.alloc(13);
+	header.writeUInt32BE(width, 0);
+	header.writeUInt32BE(height, 4);
+	header[8] = 8;
+	const rows = Buffer.alloc((width + 1) * height, 128);
+	for (let row = 0; row < height; row++) rows[row * (width + 1)] = 0;
+	const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+	return Buffer.concat([
+		signature,
+		chunk("IHDR", header),
+		chunk("IDAT", deflateSync(rows)),
+		chunk("IEND", Buffer.alloc(0)),
+	]);
+}
+
 const userMessages = (view: ConversationView | null | undefined): UserMessage[] =>
 	(view?.entries ?? []).flatMap((entry) => (entry.kind === "p2.input" ? [entry.model?.[0] as UserMessage] : []));
 
@@ -115,6 +141,38 @@ describe("files (fake provider)", () => {
 		// The fake model accepts images, so the PNG is also inlined.
 		const inline = content.find((part) => part.type === "image");
 		assert(inline?.type === "image" && inline.mimeType === "image/png" && inline.data === PNG.toString("base64"));
+	});
+
+	it("fits an inline image to the model's limits, noting what changed next to its file", async () => {
+		const wide = JSON.parse((await upload(session.id, "wide.png", greyPng(2400, 8))).body) as Uploaded;
+		await chat.send({ text: "wide", requestId: "wide", attachments: [wide.id] }, BACKGROUND_CONTEXT);
+		const view = await until(chat.view, (value) => userMessages(value).length > 1);
+		const content = userMessages(view)[1]?.content;
+		assert(Array.isArray(content));
+		const note = content.find((part) => part.type === "text" && part.text.includes("<attachments>"));
+		assert(note?.type === "text", "the attachments note");
+		assert.match(note.text, /wide\.png, \d+ bytes\) \[Resized from 2400x8 to 2000x7\. Multiply coordinates by 1\.20/);
+		const inline = content.find((part) => part.type === "image");
+		assert(inline?.type === "image" && inline.mimeType === "image/png");
+		// IHDR: width and height, big-endian, at bytes 16 and 20.
+		const png = Buffer.from(inline.data, "base64");
+		assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [2000, 7]);
+	});
+
+	it("leaves out an image attachment that cannot be decoded, saying so next to its file", async () => {
+		const broken = JSON.parse((await upload(session.id, "broken.png", "not an image")).body) as Uploaded;
+		assert.equal(broken.mimeType, "image/png", "typed by its name");
+		await chat.send({ text: "broken", requestId: "broken", attachments: [broken.id] }, BACKGROUND_CONTEXT);
+		const view = await until(chat.view, (value) => userMessages(value).length > 2);
+		const content = userMessages(view)[2]?.content;
+		assert(Array.isArray(content));
+		assert(!content.some((part) => part.type === "image"));
+		const note = content.find((part) => part.type === "text" && part.text.includes("<attachments>"));
+		assert(note?.type === "text");
+		assert.match(
+			note.text,
+			/broken\.png, 12 bytes\) \[An image \(image\/png\) cannot be prepared for the model and was left out\.\]/,
+		);
 	});
 
 	it("serves download snapshots to the owner", async () => {

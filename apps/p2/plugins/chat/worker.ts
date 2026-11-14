@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import type { ImageContent } from "@earendil-works/pi-ai";
+import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { Models } from "@earendil-works/pi-ai/models";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
 import {
@@ -15,6 +15,8 @@ import {
 	type SubmissionId,
 	type TaskId,
 } from "@earendil-works/pi-durable";
+import { fitImage } from "@earendil-works/pi-durable/images/fit";
+import { type ImageProcessor, imageLimits } from "@earendil-works/pi-durable/tools";
 import { obj } from "@earendil-works/pi-schema";
 import type { JsonValue } from "@p2/app/v1";
 import {
@@ -75,8 +77,6 @@ function restoredInput(item: InboxItem): { author: Author; text: string } | unde
 	return message?.text.trim() ? { author: message.author, text: message.text } : undefined;
 }
 
-const MAX_INLINE_IMAGE = 5 * 1024 * 1024;
-
 /** A `Chat.entries` page ends once its entries reach about this many bytes of JSON. */
 const ENTRIES_PAGE_BYTES = 1_000_000;
 
@@ -89,34 +89,39 @@ const Live = defineTypedState("p2.conversation.stats", {
 
 /**
  * The message text plus attachments: a path list the agent can read with its tools (uploads stay outside the
- * project), and images inline when the conversation's model accepts them.
+ * project), and images inline when the conversation's model accepts them, fitted to its limits as pi fits them; what
+ * fitting changed is noted next to the file.
  */
 async function content(
 	text: string,
 	files: readonly Attachment[],
 	conversation: DurableConversation,
 	models: Models | undefined,
+	processor: ImageProcessor,
 	ctx: Ctx,
 	maxImages = Number.POSITIVE_INFINITY,
-): Promise<(ImageContent | { type: "text"; text: string })[]> {
+): Promise<(ImageContent | TextContent)[]> {
 	if (!files.length) return [{ type: "text", text }];
 	const { model: ref } = await conversation.agent(ctx);
 	const model = ref ? models?.getModel(ref.provider, ref.modelId) : undefined;
-	const images: ImageContent[] = [];
-	const eligible = files.filter(
-		(file) => file.mimeType && model?.input.includes("image") && file.size <= MAX_INLINE_IMAGE,
-	);
+	const eligible = model?.input.includes("image") ? files.filter((file) => file.mimeType) : [];
 	// With a cap, the newest images (the last ones) are inlined; the rest are only listed.
-	for (const file of maxImages > 0 ? eligible.slice(-maxImages) : []) {
-		if (!file.mimeType) continue;
-		images.push({
-			type: "image",
-			mimeType: file.mimeType,
-			data: (await readFile(file.localPath ?? file.path)).toString("base64"),
-		});
+	const inline = new Set(maxImages > 0 ? eligible.slice(-maxImages) : []);
+	const limits = imageLimits(model);
+	const images: ImageContent[] = [];
+	const lines: string[] = [];
+	for (const file of files) {
+		const line = `- ${file.path} (${file.name}, ${file.size} bytes)`;
+		if (!file.mimeType || !inline.has(file)) {
+			lines.push(line);
+			continue;
+		}
+		const fitted = await fitImage(await readFile(file.localPath ?? file.path), file.mimeType, limits, processor);
+		if (fitted.kind === "fitted") images.push(fitted.image);
+		const notes = fitted.kind === "fitted" ? fitted.notes : [fitted.note];
+		lines.push(notes.length ? `${line} [${notes.join(" ")}]` : line);
 	}
-	const list = files.map((file) => `- ${file.path} (${file.name}, ${file.size} bytes)`).join("\n");
-	const note = `<attachments>\nThe user attached these files:\n${list}\n</attachments>`;
+	const note = `<attachments>\nThe user attached these files:\n${lines.join("\n")}\n</attachments>`;
 	return [{ type: "text", text: text.trim() ? `${text}\n\n${note}` : note }, ...images];
 }
 
@@ -134,6 +139,7 @@ export default defineFacet((host) => {
 			// Methods that start or end work push the worker's status before they answer (the sidebar's working dot).
 			const status = self.get(StatusReport, {});
 			const models = () => config.value.get("default")?.models();
+			const worker = workerOf(self);
 			const live = self.state(Live);
 			/** The view's model from the catalog: name, window and levels, never provider configuration. */
 			const modelMeta = (view: ConversationView | null): ModelMeta | null => {
@@ -259,7 +265,7 @@ export default defineFacet((host) => {
 							// The sender block is for the model (the system prompt attributes input by it); readers use the data.
 							content: [
 								{ type: "text", text: senderText(authorSender(author)) },
-								...(await content(text, files ?? [], current, models(), ctx, maxImages)),
+								...(await content(text, files ?? [], current, models(), worker().images, ctx, maxImages)),
 							],
 							entry: entry ? { kind: entry.kind, data: entry.data as JsonValue } : { kind: INPUT_ENTRY, data },
 							requestId: `${author.id}:${requestId}`,

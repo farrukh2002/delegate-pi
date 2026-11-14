@@ -1279,7 +1279,10 @@ call, hold, method, relay and activation; nothing is measured or walked for it. 
   the data directory's `uploads/<session>/` on this machine (for the default data directory that is
   `~/.pi/p2/uploads/<session>/`) and, when the receiving conversation works on another environment, into
   `~/.pi/p2/uploads/<session>/` there; the message lists those paths, with images inline (from this machine's copy)
-  when the model accepts them. `DownloadStore` (server local) snapshots a server file into the session's files;
+  when the model accepts them, fitted to its limits before submission with the worker's image processor
+  (`WorkerParts.images`, Durable's `fitImage`; a resize, or an image left out, is noted next to the file). `read`
+  (coding-tools) and the `fit-images` plugin (Durable's `afterTool` extension, for every tool result) fit the images of
+  tool results with the same processor before they are committed: the transcript never changes later. `DownloadStore` (server local) snapshots a server file into the session's files;
   producers on the worker (send_file) write there directly (space `downloads`, key the snapshot's UUID). `GET|HEAD
   /download?session=&id=` serves them through `SessionFiles` to the owner and the session's guests (no
   `Sec-Fetch-Site: cross-site`; ranges for audio/video). An archived or unknown session's downloads and artifacts
