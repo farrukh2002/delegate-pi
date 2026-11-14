@@ -27,7 +27,7 @@ p3 is the successor of p2 (Pi Mobile): one Pi per person, built on Chord v2 and 
 - compression at the origin on the kit's server and worker hosts (`archive/efficiency.md`; slice 1);
 - `revokedBy` on the kit's server and workers; removing a device closes its links; pairing for persons; no stale
   admission; authentication precedence (`archive/people/book.md`, What the Kit Must Add; slice 5);
-- loader admission, an org's ban (`archive/locks/design.md` §5, `archive/org-managed/book.md`; slice 16);
+- loader admission, an org's ban (`archive/locks/design.md` §5, `archive/org-managed/book.md`; slice 17);
 - rendering another plugin's messages, for the locks sheet (Fable's locks review B1, on slayer; slice 6).
 
 **Base code** (a restart changes it; named after what it is): the principal (`owner`, `person`, `worker`, `server`),
@@ -53,13 +53,14 @@ API v1 (shared, server, worker, web, terminal modules), `server.ts` (the server)
 | files | uploads, artifacts |
 | mcp | MCP servers and their tools |
 | views | pane kinds, layouts, slots, the workbench; collaborative views are plugins with server objects, state and events |
+| groupings | the sidebar's groupings as plugins: recent, by folder, projects, sections by state, rollups; pins and archive for every grouping |
 | org | enrollment, the org profile (later) |
 
 **UI:** the web page on Elanor (Earendil's React design system) and the terminal client, waiting for the team's UI
 work (owner, 2026-11-14).
 
 **Not yet sliced** (from p2 and earlier step lists): terminals, ports, the workspace and file index, search, Discord,
-Radius (relay, remote access, whole-Pi backups), voice, the telemetry viewer, groupings (rollups, projects), drafts,
+Radius (relay, remote access, whole-Pi backups), voice, the telemetry viewer, drafts,
 status, session delete, export, import and fork, stats; and base pieces: the wake bridge and worker liveness
 (Durable's wake state to the server), secrets, backup and restore with the supervisor, tunnel ingress and a public
 origin, the agent's typed surface. Sources: `archive/base-inventory/base-inventory-sol.md` §4 and `merged.md` §2.

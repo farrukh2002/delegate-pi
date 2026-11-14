@@ -19,7 +19,8 @@ before it is built, the brief is filled out in detail (`../workflow.md`).
 | 12 | Files and artifacts | `12-files.md` | brief |
 | 13 | MCP | `13-mcp.md` | brief |
 | 14 | Views | `14-views.md` | brief |
-| 15 | Web and terminal | `15-ui.md` | waiting for the team's Elanor port |
-| 16 | Org | `16-org.md` | later |
+| 15 | Groupings | `15-groupings.md` | designed in part (talks) |
+| 16 | Web and terminal | `16-ui.md` | waiting for the team's Elanor port |
+| 17 | Org | `17-org.md` | later |
 
 Not yet sliced: see `../overview.md`. The order may change as we learn; a reordering is a decision recorded in `../decisions.md`.

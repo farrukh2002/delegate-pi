@@ -1,4 +1,4 @@
-# Slice 16: Org
+# Slice 17: Org
 
 **Goal.** Enrollment, the org profile as the top lock layer, the startup gate, loader admission. `archive/org-managed/book.md` (its settings layer superseded by locks).
 

@@ -43,7 +43,7 @@ restart mark).
 **Open or to carry (docs audit):**
 
 - Installs, Apply and the plugin-writing tool through one base object (`archive/org-managed/details.md` 2192-2209):
-  `AppChanges` as that single path, with room for the loader's `admit` and more roots later (slice 16).
+  `AppChanges` as that single path, with room for the loader's `admit` and more roots later (slice 17).
 - Content-compared plugin marks (step-0a carry-over); the old reload suite was a browser test: decide what is headless.
 - From the t3code comparison (private, `/home/badlogic/chord-notes/research/t3code-customization.md`, if the owner
   agrees): escape hatches outside the page (disable a plugin from the command line, start without user plugins) and

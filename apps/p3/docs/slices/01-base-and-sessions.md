@@ -159,7 +159,7 @@ Results go into this brief. No budget is set before the first measurement; slice
    one; or the page names it (`map/book.md` proposed it for instant UI: a new session shown before the round trip).
 4. **Facts beside the row:** a session's facts as host-keyed documents written in the same transaction as its table row
    (recommended: the list needs a table, a worker and later admissions need a keyed pin; one owner, one commit).
-5. **Not in this slice** (recommended): the always-`unmanaged` gate (slice 16), compression on kit hosts and the startup
+5. **Not in this slice** (recommended): the always-`unmanaged` gate (slice 17), compression on kit hosts and the startup
    spans (measured from outside first; then decided with the budgets in slice 2), session delete, export, import, fork
    (later, with the lifecycle registry).
 
