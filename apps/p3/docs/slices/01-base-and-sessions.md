@@ -45,6 +45,22 @@ Carried from round 1: a hold of `SessionWorker` for an id never created starts a
 ask the table: admission or the session service's `open` decides it); archive does not stop the worker (above); the list
 is the newest 200, archived ones included, without paging.
 
+## p2's features in this area
+
+From `apps/p2/docs/p3-functions/sessions-access.md` and p2's `plugins/sessions/` (domains 1 and 2 of the map):
+
+| p2 feature | p3 |
+| --- | --- |
+| create a session (local or remote, directory check, defaults) | built: create with a title; location and defaults come with slices 3 and 8 |
+| a live list that never starts a worker | built: the newest 200, from the server's table |
+| rename | built (owner); automatic and agent-set titles: slice 18 |
+| archive, restore | built as a mark; stopping the worker, ending guest access and forwards: slice 18 |
+| pin, relocate, clone, fork, delete, unread marks | slice 18 |
+| list grouped by machine and directory | slice 15 (groupings) |
+| start a worker on demand, one per store | built (the kit) |
+| idle stop, a failed start kept until retried, crash reports, shutdown | built in the kit's workers component; checked by slice 18 |
+| generation fence on worker reports | not needed yet: the worker reports nothing (the server owns the facts) |
+
 ## What is built
 
 ```text
