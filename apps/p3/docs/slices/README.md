@@ -28,8 +28,9 @@ before it is built, the brief is filled out in detail, starting with p2's featur
 | 6 | Locks | `06-locks.md` | designed |
 | 17 | Org | `17-org.md` | later |
 
-Rows are in build order (the numbers are ids): p2's features first, then what p3 adds (decision "Implement and
-iterate, fundamentals first"). Each slice is small; where Chord makes a feature awkward, Chord is fixed in that slice. The
+Rows are in build order (the numbers are ids): p2's features first, then what p3 adds (decision "Fundamentals first; Chord fixed
+from an analysis of all features"). Each slice is small; the Chord changes come from Fable's analysis of every feature (pending,
+`chord-for-p3-fable.md` on slayer). The
 order may change as we learn; a reordering is a decision recorded in `../decisions.md`. Chord changes p3 needs
 (lists and rows by key, pending Fable's study `chord-for-p3-fable.md` on slayer) get slices of their own when decided.
 
