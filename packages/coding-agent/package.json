@@ -33,7 +33,8 @@
 		"delegate/agents",
 		"delegate/core/*.ts",
 		"delegate/core/*.mjs",
-		"delegate/core/bridge"
+		"delegate/core/bridge",
+		"delegate/bin"
 	],
 	"scripts": {
 		"clean": "node ../../scripts/package-files.mjs clean dist",

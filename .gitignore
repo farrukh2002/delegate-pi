@@ -52,3 +52,4 @@ packages/agent/docs/extensions/pi-server-artifact/index.md
 
 # Rust build output
 packages/image-resize-rs/target/
+packages/coding-agent/delegate/bin/

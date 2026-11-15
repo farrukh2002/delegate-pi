@@ -170,6 +170,30 @@ export function gitValue(value: string): string {
 	return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+const CLAUDE_HOOK_BINARIES: Record<string, string> = {
+	x64: "child-claude-x64",
+	arm64: "child-claude-arm64",
+};
+
+/**
+ * Static PreToolUse helper for the claude provider. A Node process here costs
+ * about 50 MB and 80 ms on every tool call; the Rust binary costs about 2 MB.
+ */
+export function claudeHookBinary(): string | undefined {
+	const name = CLAUDE_HOOK_BINARIES[process.arch];
+	if (!name) return undefined;
+	const file = path.join(ROOT, "..", "bin", name);
+	try {
+		return fs.statSync(file).isFile() ? file : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function claudeHookCommand(): string {
+	return claudeHookBinary() ? "/child-claude" : "node /delegate/child-claude.mjs";
+}
+
 export function prepareHome(home: string, provider: ProviderId): void {
 	fs.mkdirSync(home, { recursive: true, mode: 0o700 });
 	const name = hostGitConfig("user.name") ?? "delegate child";
@@ -204,7 +228,7 @@ export function prepareHome(home: string, provider: ProviderId): void {
 		fs.writeFileSync(path.join(home, ".claude.json"), JSON.stringify({ hasCompletedOnboarding: true }), { mode: 0o600 });
 		fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
 		fs.writeFileSync(path.join(home, ".claude/settings.json"), JSON.stringify({
-			hooks: { PreToolUse: [{ matcher: ".*", hooks: [{ type: "command", command: "node /delegate/child-claude.mjs", timeout: 86400 }] }] },
+			hooks: { PreToolUse: [{ matcher: ".*", hooks: [{ type: "command", command: claudeHookCommand(), timeout: 86400 }] }] },
 		}), { mode: 0o600 });
 	}
 	if (provider === "commandcode") {
@@ -327,6 +351,8 @@ export function sandboxInvocation(invocation: Invocation, mounts: WorkspaceMount
 		}
 	}
 	args.push("--ro-bind", path.join(ROOT, "bridge"), "/delegate");
+	const claudeHook = provider === "claude" ? claudeHookBinary() : undefined;
+	if (claudeHook) args.push("--ro-bind", claudeHook, "/child-claude");
 	args.push("--ro-bind", path.join(taskDir, "ipc"), "/delegate-ipc");
 	args.push(...workspaceArgs(mounts));
 	protectRuntime(args, mounts.project);
