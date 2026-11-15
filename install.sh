@@ -313,8 +313,9 @@ app="$HOME_DIR/app"
 node="$HOME_DIR/runtime/node/bin/node"
 [ -x "\$node" ] || node="\$(command -v node)" || { echo "delegate-pi: Node.js not found, run the installer again" >&2; exit 1; }
 export PI_SELF_UPDATE_COMMAND="\${PI_SELF_UPDATE_COMMAND:-sh \$app/install.sh --bin-dir $BIN_DIR $update}"
-# A small V8 nursery keeps peak RSS down on long sessions; it costs no wall time.
-exec "\$node" --max-semi-space-size=8 "\$app/dist/bundle/cli.js" "\$@"
+# A small V8 nursery and code-size optimisation keep peak RSS down on long sessions.
+# Startup time is unchanged; the runtime cost is small for an interactive TUI.
+exec "\$node" --optimize-for-size --max-semi-space-size=4 "\$app/dist/bundle/cli.js" "\$@"
 EOF
 	chmod 755 "$launcher.new"
 	mv "$launcher.new" "$launcher"
