@@ -26,11 +26,22 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+      - name: Build native helpers
+        uses: ./.github/actions/build-native-helpers
+
       - name: Build
         run: npm run build
 
       - name: Check
         run: npm run check
+
+      - name: Test native web engine
+        if: ${{ hashFiles('packages/web-rs/Cargo.toml') != '' }}
+        run: cargo test --locked --manifest-path packages/web-rs/Cargo.toml
+
+      - name: Smoke test native web engine
+        if: ${{ hashFiles('scripts/smoke-test-web-engine.mjs') != '' }}
+        run: node scripts/smoke-test-web-engine.mjs
 
       - name: Package
         run: node scripts/build-release.mjs
