@@ -27,6 +27,11 @@ for (const target of ["x64", "arm64"]) {
 		console.error(`dist/bin/pi-image-resize-${target} is missing. Run npm run build:native first.`);
 		process.exit(1);
 	}
+	const hook = join(agentDir, "delegate", "bin", `child-claude-${target}`);
+	if (!existsSync(hook)) {
+		console.error(`delegate/bin/child-claude-${target} is missing. Run scripts/build-native.sh in the delegate checkout, then node scripts/sync-delegate-native.mjs.`);
+		process.exit(1);
+	}
 }
 
 const version = JSON.parse(readFileSync(join(agentDir, "package.json"), "utf8")).version;
