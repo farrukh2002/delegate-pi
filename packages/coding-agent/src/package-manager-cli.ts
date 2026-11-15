@@ -42,8 +42,14 @@ import { hasTrustRequiringProjectResources, ProjectTrustStore } from "./core/tru
 import { spawnProcess, spawnProcessSync, waitForChildProcess } from "./utils/child-process.ts";
 import { canonicalizePath, getCwdRelativePath } from "./utils/paths.ts";
 import { getPiUserAgent } from "./utils/pi-user-agent.ts";
+import { selfUpdateOutcome } from "./utils/self-update-result.ts";
 import { stripBom } from "./utils/text.ts";
-import { formatVersionCheckError, getLatestPiRelease, isNewerPackageVersion } from "./utils/version-check.ts";
+import {
+	formatVersionCheckError,
+	getLatestPiRelease,
+	installedChannel,
+	isNewerPackageVersion,
+} from "./utils/version-check.ts";
 import {
 	cleanupWindowsSelfUpdateQuarantine,
 	quarantineWindowsNativeDependencies,
@@ -798,15 +804,15 @@ async function runConfiguredSelfUpdate(argv: string[], plan: SelfUpdatePlan): Pr
 	const change = detectInstallChange();
 	const installedVersion =
 		change?.kind === "updated" && change.version === plan.version ? change.version : readVersionOnPath();
-	if (installedVersion === plan.version) {
-		console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${plan.version}`));
-		return;
-	}
-	console.log(
-		chalk.yellow(
-			`Ran ${command.display}, but \`${APP_NAME} --version\` reports ${installedVersion ?? "no version"}, not ${plan.version}.`,
-		),
-	);
+	const outcome = selfUpdateOutcome({
+		appName: APP_NAME,
+		command: command.display,
+		previousVersion: VERSION,
+		installedVersion,
+		plannedVersion: plan.version,
+		channel: installedChannel(),
+	});
+	console.log(outcome.ok ? chalk.green(outcome.text) : chalk.yellow(outcome.text));
 }
 
 /** Version printed by `pi --version` as resolved from PATH, the pi the user runs next. */
@@ -1195,7 +1201,7 @@ export async function handlePackageCommand(
 						process.exitCode = 1;
 						return true;
 					}
-					const selfUpdatePlan = await getSelfUpdatePlan(options.force);
+					const selfUpdatePlan = await getSelfUpdatePlan(options.force || Boolean(configuredSelfUpdateArgv));
 					if (!selfUpdatePlan.shouldRun) {
 						return true;
 					}
