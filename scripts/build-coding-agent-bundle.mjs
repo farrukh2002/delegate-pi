@@ -16,7 +16,6 @@ const banner = {
 	js: 'import { createRequire as __piCreateRequire } from "node:module"; const require = __piCreateRequire(import.meta.url);',
 };
 const allowedExternalPackages = new Set([
-	"@silvia-odwyer/photon-node",
 	"jiti",
 	// Optional native accelerators. Their callers fall back to JavaScript when absent.
 	"bufferutil",
@@ -81,7 +80,6 @@ function commonBuildOptions() {
 		banner,
 		bundle: true,
 		define: { PI_BUNDLED_NODE: "true" },
-		external: ["@silvia-odwyer/photon-node"],
 		format: "esm",
 		legalComments: "none",
 		logLevel: "warning",
@@ -141,7 +139,6 @@ for (const entry of [
 	join(codingAgentDistDir, "cli.js"),
 	join(codingAgentDistDir, "index.js"),
 	join(codingAgentDistDir, "rpc-entry.js"),
-	join(codingAgentDistDir, "utils", "image-resize-worker.js"),
 	join(codingAgentDistDir, "extensions", "codemode", "worker.js"),
 	join(aiDistDir, "api", "bedrock-converse-stream.js"),
 	join(aiDistDir, "auth", "oauth", "anthropic.js"),
@@ -169,7 +166,6 @@ const mainResult = await build({
 
 const bedrockLoaderOutput = findContainingOutput(mainResult.metafile, "packages/ai/dist/api/bedrock-converse-stream.lazy.js");
 const oauthLoaderOutput = findContainingOutput(mainResult.metafile, "packages/ai/dist/auth/oauth/load.js");
-const imageResizeOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/utils/image-resize.js");
 const configOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/config.js");
 if (dirname(bedrockLoaderOutput) !== dirname(oauthLoaderOutput)) {
 	throw new Error("Bedrock and OAuth lazy loaders were emitted into different directories");
@@ -182,7 +178,6 @@ const lazyEntryPoints = {
 	anthropic: join(aiDistDir, "auth", "oauth", "anthropic.js"),
 	"bedrock-converse-stream": join(aiDistDir, "api", "bedrock-converse-stream.js"),
 	"github-copilot": join(aiDistDir, "auth", "oauth", "github-copilot.js"),
-	"image-resize-worker": join(codingAgentDistDir, "utils", "image-resize-worker.js"),
 	"kimi-coding": join(aiDistDir, "auth", "oauth", "kimi-coding.js"),
 	meta: join(aiDistDir, "auth", "oauth", "meta.js"),
 	"openai-chatgpt": join(aiDistDir, "auth", "oauth", "openai-chatgpt.js"),
@@ -233,10 +228,6 @@ for (const [outputPath, output] of Object.entries(codemodeWorkerResult.metafile.
 	}
 }
 
-const imageResizeWorkerOutput = resolve(dirname(bedrockLoaderOutput), "image-resize-worker.js");
-if (dirname(imageResizeOutput) !== dirname(imageResizeWorkerOutput)) {
-	throw new Error("Image resize implementation and worker were emitted into different directories");
-}
 // getCodemodeWorkerUrl() in config.ts resolves the worker next to its own chunk.
 if (dirname(configOutput) !== dirname(bedrockLoaderOutput)) {
 	throw new Error("config.ts and the codemode worker were emitted into different directories");

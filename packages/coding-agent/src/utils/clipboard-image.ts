@@ -5,8 +5,8 @@ import { tmpdir } from "os";
 import { join } from "path";
 
 import { runClipboardCommand } from "./clipboard-command.ts";
+import { convertImageBytesToPng } from "./image-convert.ts";
 import { detectSupportedImageMimeType } from "./mime.ts";
-import { loadPhoton } from "./photon.ts";
 import { isWSL } from "./wsl.ts";
 
 export type ClipboardImage = {
@@ -62,28 +62,6 @@ function selectPreferredImageMimeType(mimeTypes: string[]): string | null {
 function isSupportedImageMimeType(mimeType: string): boolean {
 	const base = baseMimeType(mimeType);
 	return SUPPORTED_IMAGE_MIME_TYPES.some((t) => t === base);
-}
-
-/**
- * Convert unsupported image formats to PNG using Photon.
- * Returns null if conversion is unavailable or fails.
- */
-async function convertToPng(bytes: Uint8Array): Promise<Uint8Array | null> {
-	const photon = await loadPhoton();
-	if (!photon) {
-		return null;
-	}
-
-	try {
-		const image = photon.PhotonImage.new_from_byteslice(bytes);
-		try {
-			return image.get_bytes();
-		} finally {
-			image.free();
-		}
-	} catch {
-		return null;
-	}
 }
 
 // Undefined means the backend failed; null means it has no image. An empty
@@ -229,7 +207,7 @@ export async function readClipboardImage(options?: {
 
 	// Convert unsupported formats (e.g., Windows DIB data wrapped as BMP) to PNG
 	if (!isSupportedImageMimeType(image.mimeType)) {
-		const pngBytes = await convertToPng(image.bytes);
+		const pngBytes = await convertImageBytesToPng(image.bytes);
 		if (!pngBytes) {
 			return null;
 		}

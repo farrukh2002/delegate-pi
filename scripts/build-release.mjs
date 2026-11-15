@@ -10,7 +10,7 @@ const agentDir = join(repoRoot, "packages", "coding-agent");
 const outDir = resolve(process.argv[2] ?? join(repoRoot, "release"));
 const stage = join(outDir, "delegate-pi");
 const archive = join(outDir, "delegate-pi.tar.gz");
-const externals = ["jiti", "@silvia-odwyer/photon-node"];
+const externals = ["jiti"];
 
 function run(command, args, cwd) {
 	return execFileSync(command, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
@@ -19,6 +19,14 @@ function run(command, args, cwd) {
 if (!existsSync(join(agentDir, "dist", "bundle", "cli.js"))) {
 	console.error("dist/bundle/cli.js is missing. Run npm run build first.");
 	process.exit(1);
+}
+
+for (const target of ["x64", "arm64"]) {
+	const helper = join(agentDir, "dist", "bin", `pi-image-resize-${target}`);
+	if (!existsSync(helper)) {
+		console.error(`dist/bin/pi-image-resize-${target} is missing. Run npm run build:native first.`);
+		process.exit(1);
+	}
 }
 
 const version = JSON.parse(readFileSync(join(agentDir, "package.json"), "utf8")).version;
@@ -34,6 +42,9 @@ for (const { path } of pack.files) {
 }
 chmodSync(join(stage, "dist", "bundle", "cli.js"), 0o755);
 chmodSync(join(stage, "delegate", "core", "delegate.mjs"), 0o755);
+for (const target of ["x64", "arm64"]) {
+	chmodSync(join(stage, "dist", "bin", `pi-image-resize-${target}`), 0o755);
+}
 
 for (const name of externals) {
 	cpSync(join(repoRoot, "node_modules", name), join(stage, "node_modules", name), { recursive: true, dereference: true });

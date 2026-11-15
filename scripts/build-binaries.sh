@@ -132,9 +132,9 @@ for platform in "${PLATFORMS[@]}"; do
     # package.json autoload so extension dependencies resolve through their
     # package.json main/exports entries instead of only a root index.* (see #12012).
     if [[ "$platform" == windows-* ]]; then
-        bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv --compile-autoload-package-json --target="$bun_target" ./dist/bun/cli.js ./src/utils/image-resize-worker.ts ./src/extensions/codemode/worker.ts --outfile "$OUTPUT_DIR/$platform/pi.exe"
+        bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv --compile-autoload-package-json --target="$bun_target" ./dist/bun/cli.js ./src/extensions/codemode/worker.ts --outfile "$OUTPUT_DIR/$platform/pi.exe"
     else
-        bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv --compile-autoload-package-json --target="$bun_target" ./dist/bun/cli.js ./src/utils/image-resize-worker.ts ./src/extensions/codemode/worker.ts --outfile "$OUTPUT_DIR/$platform/pi"
+        bun build --compile --no-compile-autoload-bunfig --no-compile-autoload-dotenv --compile-autoload-package-json --target="$bun_target" ./dist/bun/cli.js ./src/extensions/codemode/worker.ts --outfile "$OUTPUT_DIR/$platform/pi"
     fi
 done
 
@@ -145,7 +145,6 @@ for platform in "${PLATFORMS[@]}"; do
     cp package.json "$OUTPUT_DIR/$platform/"
     cp README.md "$OUTPUT_DIR/$platform/"
     cp CHANGELOG.md "$OUTPUT_DIR/$platform/"
-    cp ../../node_modules/@silvia-odwyer/photon-node/photon_rs_bg.wasm "$OUTPUT_DIR/$platform/"
     mkdir -p "$OUTPUT_DIR/$platform/theme"
     cp dist/modes/interactive/theme/*.json "$OUTPUT_DIR/$platform/theme/"
     mkdir -p "$OUTPUT_DIR/$platform/assets"

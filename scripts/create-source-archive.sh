@@ -132,7 +132,6 @@ required_paths=(
     "packages/tui/native/win32/prebuilds/win32-arm64/win32-platform.node"
     "packages/tui/native/win32/prebuilds/win32-x64/win32-platform.node"
     "packages/coding-agent/package.json"
-    "packages/coding-agent/src/utils/image-resize-worker.ts"
     "packages/coding-agent/src/core/export-html/template.css"
 )
 
