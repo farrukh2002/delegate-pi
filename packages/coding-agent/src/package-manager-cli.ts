@@ -788,8 +788,9 @@ async function runConfiguredSelfUpdate(argv: string[], plan: SelfUpdatePlan): Pr
 	const change = detectInstallChange();
 	const installedVersion =
 		change?.kind === "updated" && change.version === plan.version ? change.version : readVersionOnPath();
-	if (installedVersion === plan.version) {
-		console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${plan.version}`));
+	const changed = installedVersion !== undefined && installedVersion !== VERSION;
+	if (installedVersion === plan.version || changed) {
+		console.log(chalk.green(`Updated ${APP_NAME} from ${VERSION} to ${installedVersion ?? plan.version}`));
 		return;
 	}
 	console.log(
@@ -1185,7 +1186,7 @@ export async function handlePackageCommand(
 						process.exitCode = 1;
 						return true;
 					}
-					const selfUpdatePlan = await getSelfUpdatePlan(options.force);
+					const selfUpdatePlan = await getSelfUpdatePlan(options.force || Boolean(configuredSelfUpdateArgv));
 					if (!selfUpdatePlan.shouldRun) {
 						return true;
 					}
