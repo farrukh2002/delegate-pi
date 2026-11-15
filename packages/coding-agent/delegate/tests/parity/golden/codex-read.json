@@ -1,0 +1,121 @@
+{
+	"scenario": "codex-read",
+	"impl": "js",
+	"statuses": [
+		"starting",
+		"running",
+		"completed"
+	],
+	"status": "completed",
+	"turns": 1,
+	"input": 200,
+	"output": 40,
+	"costUsd": null,
+	"final": {
+		"activity": [
+			"Checked the project."
+		],
+		"agent": "direct",
+		"costUsd": null,
+		"exitCode": 0,
+		"pending": [],
+		"provider": "codex",
+		"runtimeMode": "full-access",
+		"sandbox": "fs",
+		"scope": [],
+		"status": "completed",
+		"summary": "Checked the project.",
+		"taskId": "<uuid>",
+		"usage": {
+			"cacheRead": 100,
+			"cacheWrite": 7,
+			"contextTokens": 300,
+			"cost": 0,
+			"costEstimated": false,
+			"input": 200,
+			"output": 40,
+			"turns": 1
+		}
+	},
+	"trace": [
+		{
+			"step": 0,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "codex",
+				"runtimeMode": "full-access",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "starting",
+				"summary": "Starting sandboxed child",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 1,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "codex",
+				"runtimeMode": "full-access",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "running",
+				"summary": "Running inside the filesystem sandbox",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 2,
+			"state": {
+				"activity": [
+					"Checked the project."
+				],
+				"agent": "direct",
+				"costUsd": null,
+				"exitCode": 0,
+				"pending": [],
+				"provider": "codex",
+				"runtimeMode": "full-access",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "completed",
+				"summary": "Checked the project.",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 100,
+					"cacheWrite": 7,
+					"contextTokens": 300,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 200,
+					"output": 40,
+					"turns": 1
+				}
+			}
+		}
+	]
+}

@@ -1,0 +1,416 @@
+{
+	"read-only": {
+		"scope": [],
+		"steps": [
+			{
+				"emit": {
+					"type": "session",
+					"id": "s1"
+				}
+			},
+			{
+				"emit": {
+					"type": "message_end",
+					"message": {
+						"id": "m1",
+						"role": "assistant",
+						"content": [
+							{
+								"type": "text",
+								"text": "Reading the project."
+							}
+						],
+						"usage": {
+							"input": 100,
+							"output": 20,
+							"cacheRead": 0,
+							"cacheWrite": 0,
+							"totalTokens": 120,
+							"cost": {
+								"total": 0.001
+							}
+						}
+					}
+				}
+			},
+			{
+				"sleep": 300
+			},
+			{
+				"emit": {
+					"type": "message_end",
+					"message": {
+						"id": "m2",
+						"role": "assistant",
+						"content": [
+							{
+								"type": "text",
+								"text": "Nothing to change; the project is read-only for this task."
+							}
+						],
+						"usage": {
+							"input": 200,
+							"output": 30,
+							"cacheRead": 50,
+							"cacheWrite": 10,
+							"totalTokens": 290,
+							"cost": {
+								"total": 0.002
+							}
+						}
+					}
+				}
+			},
+			{
+				"exit": 0
+			}
+		]
+	},
+	"edit": {
+		"scope": [
+			"src"
+		],
+		"files": {
+			"src/a.ts": "one\n"
+		},
+		"steps": [
+			{
+				"emit": {
+					"type": "message_end",
+					"message": {
+						"id": "m1",
+						"role": "assistant",
+						"content": [
+							{
+								"type": "toolCall",
+								"name": "write",
+								"arguments": {
+									"path": "src/a.ts"
+								}
+							}
+						],
+						"usage": {
+							"input": 100,
+							"output": 10,
+							"totalTokens": 110,
+							"cost": {
+								"total": 0.001
+							}
+						}
+					}
+				}
+			},
+			{
+				"write": "src/a.ts",
+				"text": "two\n"
+			},
+			{
+				"emit": {
+					"type": "message_end",
+					"message": {
+						"id": "m2",
+						"role": "assistant",
+						"content": [
+							{
+								"type": "text",
+								"text": "Changed src/a.ts."
+							}
+						],
+						"usage": {
+							"input": 150,
+							"output": 20,
+							"totalTokens": 170,
+							"cost": {
+								"total": 0.002
+							}
+						}
+					}
+				}
+			},
+			{
+				"exit": 0
+			}
+		]
+	},
+	"question": {
+		"scope": [],
+		"answer": {
+			"answer": "Yes"
+		},
+		"steps": [
+			{
+				"emit": {
+					"type": "message_end",
+					"message": {
+						"id": "m1",
+						"role": "assistant",
+						"content": [
+							{
+								"type": "text",
+								"text": "I need a decision."
+							}
+						]
+					}
+				}
+			},
+			{
+				"ask": {
+					"question": "Proceed with option A?",
+					"options": [
+						{
+							"label": "Yes"
+						},
+						{
+							"label": "No"
+						}
+					]
+				},
+				"echo": true
+			},
+			{
+				"emit": {
+					"type": "message_end",
+					"message": {
+						"id": "m2",
+						"role": "assistant",
+						"content": [
+							{
+								"type": "text",
+								"text": "Proceeding."
+							}
+						]
+					}
+				}
+			},
+			{
+				"exit": 0
+			}
+		]
+	},
+	"blocked": {
+		"scope": [
+			"src"
+		],
+		"files": {
+			"src/a.ts": "one\n"
+		},
+		"steps": [
+			{
+				"emit": {
+					"type": "message_end",
+					"message": {
+						"id": "m1",
+						"role": "assistant",
+						"content": [
+							{
+								"type": "text",
+								"text": "BLOCKED FILES: src/a.ts needs a migration outside the scope."
+							}
+						]
+					}
+				}
+			},
+			{
+				"exit": 0
+			}
+		]
+	},
+	"failure": {
+		"scope": [],
+		"steps": [
+			{
+				"stderr": "boom: the child failed"
+			},
+			{
+				"exit": 2
+			}
+		]
+	},
+	"cancel": {
+		"scope": [],
+		"cancelAfterMs": 1500,
+		"steps": [
+			{
+				"sleep": 30000
+			},
+			{
+				"emit": {
+					"type": "message_end",
+					"message": {
+						"id": "m1",
+						"role": "assistant",
+						"content": [
+							{
+								"type": "text",
+								"text": "too late"
+							}
+						]
+					}
+				}
+			},
+			{
+				"exit": 0
+			}
+		]
+	},
+	"no-progress": {
+		"scope": [],
+		"noProgressMs": 2500,
+		"steps": [
+			{
+				"sleep": 30000
+			},
+			{
+				"exit": 0
+			}
+		]
+	},
+	"claude-read": {
+		"provider": "claude",
+		"fake": "claude",
+		"scope": [],
+		"steps": [
+			{
+				"emit": {
+					"type": "assistant",
+					"message": {
+						"id": "m1",
+						"role": "assistant",
+						"content": [
+							{
+								"type": "text",
+								"text": "Checking the code."
+							}
+						],
+						"usage": {
+							"input_tokens": 100,
+							"output_tokens": 20,
+							"cache_read_input_tokens": 50,
+							"cache_creation_input_tokens": 5
+						}
+					}
+				}
+			},
+			{
+				"emit": {
+					"type": "result",
+					"subtype": "success",
+					"total_cost_usd": 0.004,
+					"result": "Done."
+				}
+			},
+			{
+				"exit": 0
+			}
+		]
+	},
+	"codex-read": {
+		"provider": "codex",
+		"fake": "codex",
+		"scope": [],
+		"steps": [
+			{
+				"emit": {
+					"type": "item.completed",
+					"item": {
+						"type": "agent_message",
+						"text": "Checked the project."
+					}
+				}
+			},
+			{
+				"emit": {
+					"type": "turn.completed",
+					"usage": {
+						"input_tokens": 300,
+						"cached_input_tokens": 100,
+						"output_tokens": 40,
+						"cache_write_input_tokens": 7
+					}
+				}
+			},
+			{
+				"exit": 0
+			}
+		],
+		"runtimeMode": "full-access"
+	},
+	"commandcode-read": {
+		"provider": "commandcode",
+		"fake": "commandcode",
+		"scope": [],
+		"steps": [
+			{
+				"emit": {
+					"type": "event",
+					"event": {
+						"type": "turn_start"
+					}
+				}
+			},
+			{
+				"emit": {
+					"type": "event",
+					"event": {
+						"type": "model_request_end",
+						"usage": {
+							"inputTokens": 200,
+							"cacheReadTokens": 50,
+							"outputTokens": 25,
+							"cacheWriteTokens": 3
+						}
+					}
+				}
+			},
+			{
+				"emit": {
+					"type": "result",
+					"finalText": "Checked with Command Code.",
+					"subtype": "success"
+				}
+			},
+			{
+				"exit": 0
+			}
+		]
+	},
+	"conflict": {
+		"scope": [
+			"src"
+		],
+		"files": {
+			"src/a.ts": "one\n"
+		},
+		"preclaim": {
+			"taskId": "11111111-1111-4111-8111-111111111111",
+			"path": "src/b.ts"
+		},
+		"steps": [
+			{
+				"write": "src/b.ts",
+				"text": "new\n"
+			},
+			{
+				"sleep": 700
+			},
+			{
+				"emit": {
+					"type": "message_end",
+					"message": {
+						"id": "m1",
+						"role": "assistant",
+						"content": [
+							{
+								"type": "text",
+								"text": "Added src/b.ts."
+							}
+						]
+					}
+				}
+			},
+			{
+				"exit": 0
+			}
+		]
+	}
+}

@@ -1,0 +1,121 @@
+{
+	"scenario": "claude-read",
+	"impl": "js",
+	"statuses": [
+		"starting",
+		"running",
+		"completed"
+	],
+	"status": "completed",
+	"turns": 1,
+	"input": 100,
+	"output": 20,
+	"costUsd": 0.004,
+	"final": {
+		"activity": [
+			"Checking the code."
+		],
+		"agent": "direct",
+		"costUsd": 0.004,
+		"exitCode": 0,
+		"pending": [],
+		"provider": "claude",
+		"runtimeMode": "approval-required",
+		"sandbox": "fs",
+		"scope": [],
+		"status": "completed",
+		"summary": "Checking the code.",
+		"taskId": "<uuid>",
+		"usage": {
+			"cacheRead": 50,
+			"cacheWrite": 5,
+			"contextTokens": 155,
+			"cost": 0.004,
+			"costEstimated": false,
+			"input": 100,
+			"output": 20,
+			"turns": 1
+		}
+	},
+	"trace": [
+		{
+			"step": 0,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "claude",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "starting",
+				"summary": "Starting sandboxed child",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 1,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "claude",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "running",
+				"summary": "Running inside the filesystem sandbox",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 2,
+			"state": {
+				"activity": [
+					"Checking the code."
+				],
+				"agent": "direct",
+				"costUsd": 0.004,
+				"exitCode": 0,
+				"pending": [],
+				"provider": "claude",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "completed",
+				"summary": "Checking the code.",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 50,
+					"cacheWrite": 5,
+					"contextTokens": 155,
+					"cost": 0.004,
+					"costEstimated": false,
+					"input": 100,
+					"output": 20,
+					"turns": 1
+				}
+			}
+		}
+	]
+}

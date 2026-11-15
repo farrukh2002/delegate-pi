@@ -1,0 +1,115 @@
+{
+	"scenario": "failure",
+	"impl": "js",
+	"statuses": [
+		"starting",
+		"running",
+		"failed"
+	],
+	"status": "failed",
+	"turns": 0,
+	"input": 0,
+	"output": 0,
+	"costUsd": null,
+	"final": {
+		"agent": "direct",
+		"costUsd": null,
+		"exitCode": 2,
+		"pending": [],
+		"provider": "pi",
+		"runtimeMode": "approval-required",
+		"sandbox": "fs",
+		"scope": [],
+		"status": "failed",
+		"summary": "boom: the child failed\n",
+		"taskId": "<uuid>",
+		"usage": {
+			"cacheRead": 0,
+			"cacheWrite": 0,
+			"contextTokens": 0,
+			"cost": 0,
+			"costEstimated": false,
+			"input": 0,
+			"output": 0,
+			"turns": 0
+		}
+	},
+	"trace": [
+		{
+			"step": 0,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "starting",
+				"summary": "Starting sandboxed child",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 1,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "running",
+				"summary": "Running inside the filesystem sandbox",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 2,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"exitCode": 2,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "failed",
+				"summary": "boom: the child failed\n",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		}
+	]
+}
