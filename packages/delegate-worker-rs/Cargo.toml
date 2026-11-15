@@ -1,0 +1,21 @@
+[package]
+name = "delegate-worker"
+version = "0.1.0"
+edition = "2021"
+description = "Delegate worker: sandboxed child supervisor for delegate-pi"
+
+[[bin]]
+name = "delegate-worker"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"
+libc = "0.2"
+sha2 = "0.10"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

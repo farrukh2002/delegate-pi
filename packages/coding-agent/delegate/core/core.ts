@@ -122,6 +122,18 @@ function safeWorkspace(cwd: string): string {
 	return workspace;
 }
 
+function workerBinary(): string | undefined {
+	const mode = process.env.DELEGATE_WORKER ?? "rust";
+	if (mode === "js") return undefined;
+	const name = `delegate-worker-${process.arch === "arm64" ? "arm64" : "x64"}`;
+	const file = path.join(ROOT, "..", "bin", name);
+	try {
+		return fs.statSync(file).isFile() ? file : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 export function start(request: DelegateRequest): any {
 	parentOnly();
 	if (!request || typeof request.task !== "string" || !request.task.trim() || request.task.length > 12000) throw new Error("Task must contain 1–12000 characters");
@@ -165,7 +177,11 @@ export function start(request: DelegateRequest): any {
 	atomic(path.join(dir, "state.json"), { taskId: id, agent: request.agent || "direct", provider, status: "starting", sandbox: "fs", runtimeMode, cwd, scope, createdAt: Date.now(), summary: "Starting sandboxed child", usage: emptyUsage(), costUsd: null, pending: [] });
 	const log = fs.openSync(path.join(dir, "worker.log"), "a", 0o600);
 	try {
-		const worker = spawn(process.execPath, [path.join(ROOT, "delegate.mjs"), "_worker", id], { detached: true, stdio: ["ignore", log, log], env: process.env });
+		const binary = workerBinary();
+		if (process.env.DELEGATE_WORKER === "rust" && !binary) throw new Error("The rust worker binary is missing");
+		const worker = binary
+			? spawn(binary, [id], { detached: true, stdio: ["ignore", log, log], env: process.env })
+			: spawn(process.execPath, [path.join(ROOT, "delegate.mjs"), "_worker", id], { detached: true, stdio: ["ignore", log, log], env: process.env });
 		worker.unref();
 	} finally { fs.closeSync(log); }
 	return status(id);

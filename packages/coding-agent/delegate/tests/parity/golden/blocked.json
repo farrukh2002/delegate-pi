@@ -1,0 +1,138 @@
+{
+	"scenario": "blocked",
+	"impl": "js",
+	"statuses": [
+		"starting",
+		"running",
+		"blocked"
+	],
+	"status": "blocked",
+	"turns": 0,
+	"input": 0,
+	"output": 0,
+	"costUsd": null,
+	"diffstat": "",
+	"final": {
+		"activity": [
+			"BLOCKED FILES: src/a.ts needs a migration outside the scope."
+		],
+		"agent": "direct",
+		"costUsd": null,
+		"diffstat": "",
+		"exitCode": 0,
+		"pending": [],
+		"provider": "pi",
+		"runtimeMode": "approval-required",
+		"sandbox": "fs",
+		"scope": [
+			"src"
+		],
+		"scopeHeld": true,
+		"snapshot": true,
+		"status": "blocked",
+		"summary": "BLOCKED FILES: src/a.ts needs a migration outside the scope.",
+		"taskId": "<uuid>",
+		"usage": {
+			"cacheRead": 0,
+			"cacheWrite": 0,
+			"contextTokens": 0,
+			"cost": 0,
+			"costEstimated": false,
+			"input": 0,
+			"output": 0,
+			"turns": 0
+		}
+	},
+	"trace": [
+		{
+			"step": 0,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [
+					"src"
+				],
+				"status": "starting",
+				"summary": "Starting sandboxed child",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 1,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [
+					"src"
+				],
+				"scopeHeld": true,
+				"snapshot": true,
+				"status": "running",
+				"summary": "Running inside the filesystem sandbox",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 2,
+			"state": {
+				"activity": [
+					"BLOCKED FILES: src/a.ts needs a migration outside the scope."
+				],
+				"agent": "direct",
+				"costUsd": null,
+				"diffstat": "",
+				"exitCode": 0,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [
+					"src"
+				],
+				"scopeHeld": true,
+				"snapshot": true,
+				"status": "blocked",
+				"summary": "BLOCKED FILES: src/a.ts needs a migration outside the scope.",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		}
+	]
+}

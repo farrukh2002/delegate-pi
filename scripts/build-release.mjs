@@ -32,6 +32,11 @@ for (const target of ["x64", "arm64"]) {
 		console.error(`delegate/bin/child-claude-${target} is missing. Run scripts/build-native.sh in the delegate checkout, then node scripts/sync-delegate-native.mjs.`);
 		process.exit(1);
 	}
+	const worker = join(agentDir, "delegate", "bin", `delegate-worker-${target}`);
+	if (!existsSync(worker)) {
+		console.error(`delegate/bin/delegate-worker-${target} is missing. Run scripts/build-delegate-worker.sh.`);
+		process.exit(1);
+	}
 }
 
 const version = JSON.parse(readFileSync(join(agentDir, "package.json"), "utf8")).version;
@@ -49,6 +54,7 @@ chmodSync(join(stage, "dist", "bundle", "cli.js"), 0o755);
 chmodSync(join(stage, "delegate", "core", "delegate.mjs"), 0o755);
 for (const target of ["x64", "arm64"]) {
 	chmodSync(join(stage, "dist", "bin", `pi-image-resize-${target}`), 0o755);
+	chmodSync(join(stage, "delegate", "bin", `delegate-worker-${target}`), 0o755);
 }
 
 for (const name of externals) {

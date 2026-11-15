@@ -1,0 +1,225 @@
+{
+	"scenario": "question",
+	"impl": "js",
+	"statuses": [
+		"starting",
+		"running",
+		"waiting",
+		"completed"
+	],
+	"status": "completed",
+	"turns": 0,
+	"input": 0,
+	"output": 0,
+	"costUsd": null,
+	"final": {
+		"activity": [
+			"I need a decision.",
+			"ANSWER {\"answer\":\"Yes\"}",
+			"Proceeding."
+		],
+		"agent": "direct",
+		"costUsd": null,
+		"exitCode": 0,
+		"pending": [],
+		"provider": "pi",
+		"runtimeMode": "approval-required",
+		"sandbox": "fs",
+		"scope": [],
+		"status": "completed",
+		"summary": "Proceeding.",
+		"taskId": "<uuid>",
+		"usage": {
+			"cacheRead": 0,
+			"cacheWrite": 0,
+			"contextTokens": 0,
+			"cost": 0,
+			"costEstimated": false,
+			"input": 0,
+			"output": 0,
+			"turns": 0
+		}
+	},
+	"trace": [
+		{
+			"step": 0,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "starting",
+				"summary": "Starting sandboxed child",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 1,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "running",
+				"summary": "Running inside the filesystem sandbox",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 2,
+			"state": {
+				"activity": [
+					"I need a decision."
+				],
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "running",
+				"summary": "Running inside the filesystem sandbox",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 3,
+			"state": {
+				"activity": [
+					"I need a decision."
+				],
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [
+					{
+						"id": "<uuid>",
+						"kind": "question",
+						"multiSelect": false,
+						"options": [
+							{
+								"label": "Yes"
+							},
+							{
+								"label": "No"
+							}
+						],
+						"question": "Proceed with option A?"
+					}
+				],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "waiting",
+				"summary": "Child is waiting for the parent user. Do not invent an answer.",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 4,
+			"state": {
+				"activity": [
+					"I need a decision."
+				],
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "running",
+				"summary": "Child continued after user input",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 5,
+			"state": {
+				"activity": [
+					"I need a decision.",
+					"ANSWER {\"answer\":\"Yes\"}",
+					"Proceeding."
+				],
+				"agent": "direct",
+				"costUsd": null,
+				"exitCode": 0,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "completed",
+				"summary": "Proceeding.",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		}
+	]
+}

@@ -1,0 +1,151 @@
+{
+	"scenario": "read-only",
+	"impl": "js",
+	"statuses": [
+		"starting",
+		"running",
+		"completed"
+	],
+	"status": "completed",
+	"turns": 2,
+	"input": 300,
+	"output": 50,
+	"costUsd": 0.003,
+	"final": {
+		"activity": [
+			"Reading the project.",
+			"Nothing to change; the project is read-only for this task."
+		],
+		"agent": "direct",
+		"costUsd": 0.003,
+		"exitCode": 0,
+		"pending": [],
+		"provider": "pi",
+		"runtimeMode": "approval-required",
+		"sandbox": "fs",
+		"scope": [],
+		"status": "completed",
+		"summary": "Nothing to change; the project is read-only for this task.",
+		"taskId": "<uuid>",
+		"usage": {
+			"cacheRead": 50,
+			"cacheWrite": 10,
+			"contextTokens": 290,
+			"cost": 0.003,
+			"costEstimated": false,
+			"input": 300,
+			"output": 50,
+			"turns": 2
+		}
+	},
+	"trace": [
+		{
+			"step": 0,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "starting",
+				"summary": "Starting sandboxed child",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 1,
+			"state": {
+				"agent": "direct",
+				"costUsd": null,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "running",
+				"summary": "Running inside the filesystem sandbox",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 0,
+					"cost": 0,
+					"costEstimated": false,
+					"input": 0,
+					"output": 0,
+					"turns": 0
+				}
+			}
+		},
+		{
+			"step": 2,
+			"state": {
+				"activity": [
+					"Reading the project."
+				],
+				"agent": "direct",
+				"costUsd": 0.001,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "running",
+				"summary": "Running inside the filesystem sandbox",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 0,
+					"cacheWrite": 0,
+					"contextTokens": 120,
+					"cost": 0.001,
+					"costEstimated": false,
+					"input": 100,
+					"output": 20,
+					"turns": 1
+				}
+			}
+		},
+		{
+			"step": 3,
+			"state": {
+				"activity": [
+					"Reading the project.",
+					"Nothing to change; the project is read-only for this task."
+				],
+				"agent": "direct",
+				"costUsd": 0.003,
+				"exitCode": 0,
+				"pending": [],
+				"provider": "pi",
+				"runtimeMode": "approval-required",
+				"sandbox": "fs",
+				"scope": [],
+				"status": "completed",
+				"summary": "Nothing to change; the project is read-only for this task.",
+				"taskId": "<uuid>",
+				"usage": {
+					"cacheRead": 50,
+					"cacheWrite": 10,
+					"contextTokens": 290,
+					"cost": 0.003,
+					"costEstimated": false,
+					"input": 300,
+					"output": 50,
+					"turns": 2
+				}
+			}
+		}
+	]
+}
