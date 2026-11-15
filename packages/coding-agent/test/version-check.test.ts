@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	checkForNewPiVersion,
@@ -5,6 +8,7 @@ import {
 	formatVersionCheckError,
 	getLatestPiRelease,
 	getLatestPiVersion,
+	installedChannel,
 	isNewerPackageVersion,
 } from "../src/utils/version-check.ts";
 import { allowNetwork } from "./test-network-env.ts";
@@ -19,14 +23,21 @@ vi.mock("../src/config.ts", async (importOriginal) => ({
 }));
 
 const originalSkipVersionCheck = process.env.PI_SKIP_VERSION_CHECK;
+const originalInstallHome = process.env.DELEGATE_PI_HOME;
+let channelHome: string;
 
 beforeEach(() => {
 	allowNetwork();
+	channelHome = mkdtempSync(join(tmpdir(), "pi-version-check-"));
+	process.env.DELEGATE_PI_HOME = channelHome;
 });
 
 afterEach(() => {
 	release.repository = undefined;
 	vi.unstubAllGlobals();
+	rmSync(channelHome, { recursive: true, force: true });
+	if (originalInstallHome === undefined) delete process.env.DELEGATE_PI_HOME;
+	else process.env.DELEGATE_PI_HOME = originalInstallHome;
 	if (originalSkipVersionCheck === undefined) {
 		delete process.env.PI_SKIP_VERSION_CHECK;
 	} else {
@@ -161,5 +172,63 @@ describe("version checks", () => {
 		);
 
 		await expect(checkForNewPiVersion("1.2.3")).resolves.toBeUndefined();
+	});
+});
+
+describe("channel-aware version checks", () => {
+	it("reads the installed channel", () => {
+		writeFileSync(join(channelHome, "channel"), "dev\n");
+		expect(installedChannel()).toBe("dev");
+		writeFileSync(join(channelHome, "channel"), "rc\n");
+		expect(installedChannel()).toBe("rc");
+		writeFileSync(join(channelHome, "channel"), "stable\n");
+		expect(installedChannel()).toBe("stable");
+	});
+
+	it("keeps a dev build quiet when the dev release is the same commit", async () => {
+		release.repository = "owner/fork";
+		writeFileSync(join(channelHome, "channel"), "dev\n");
+		const fetchMock = vi.fn(async () =>
+			Response.json({
+				tag_name: "dev",
+				name: "delegate-pi 1.5.2-dev.3d12572",
+				target_commitish: "3d1257234b05d2e22572b61fd6995c0ad2bf0182",
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(checkForNewPiVersion("1.5.2-dev.3d12572")).resolves.toBeUndefined();
+		expect(fetchMock).toHaveBeenCalledWith(
+			"https://api.github.com/repos/owner/fork/releases/tags/dev",
+			expect.anything(),
+		);
+	});
+
+	it("reports a newer dev build", async () => {
+		release.repository = "owner/fork";
+		writeFileSync(join(channelHome, "channel"), "dev\n");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				Response.json({
+					tag_name: "dev",
+					name: "delegate-pi 1.5.2-dev.9999999",
+					target_commitish: "9999999aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				}),
+			),
+		);
+
+		await expect(checkForNewPiVersion("1.5.2-dev.3d12572")).resolves.toEqual({ version: "1.5.2-dev.9999999" });
+	});
+
+	it("compares rc builds with the newest release candidate", async () => {
+		release.repository = "owner/fork";
+		writeFileSync(join(channelHome, "channel"), "rc\n");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => Response.json([{ tag_name: "v1.5.2-rc.2" }, { tag_name: "v1.5.2-rc.1" }])),
+		);
+
+		await expect(checkForNewPiVersion("1.5.2-rc.1")).resolves.toEqual({ version: "1.5.2-rc.2" });
 	});
 });

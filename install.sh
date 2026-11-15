@@ -308,6 +308,7 @@ write_launcher() {
 	cat >"$launcher.new" <<EOF
 #!/bin/sh
 $MARKER
+export DELEGATE_PI_HOME="$HOME_DIR"
 app="$HOME_DIR/app"
 node="$HOME_DIR/runtime/node/bin/node"
 [ -x "\$node" ] || node="\$(command -v node)" || { echo "delegate-pi: Node.js not found, run the installer again" >&2; exit 1; }
