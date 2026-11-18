@@ -14,7 +14,7 @@ if (!existsSync(binDir)) {
 	process.exit(0);
 }
 for (const name of readdirSync(binDir)) {
-	if (!name.startsWith("pi-image-resize")) continue;
+	if (!name.startsWith("pi-image-resize") && !name.startsWith("pi-web")) continue;
 	copyFileSync(join(binDir, name), join(target, name));
 	console.log(`copied ${name}`);
 }

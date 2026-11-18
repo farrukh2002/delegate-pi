@@ -1,0 +1,43 @@
+[package]
+name = "pi-web"
+version = "0.1.0"
+edition = "2021"
+description = "pi-web: native web engine helper for delegate-pi"
+
+[[bin]]
+name = "pi-web"
+path = "src/main.rs"
+
+[lib]
+name = "pi_web"
+path = "src/lib.rs"
+
+[dependencies]
+aho-corasick = "=1.1.5"
+base64 = "=0.22.1"
+dom_query = { version = "=0.29.0", default-features = false }
+dom_smoothie = { version = "=0.19.0", default-features = false }
+fs2 = "=0.4.3"
+gix = { version = "=0.90.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "index", "revision", "sha1", "sha256"] }
+grep-matcher = "=0.1.9"
+grep-regex = "=0.1.14"
+ignore = "=0.4.34"
+libc = "=0.2.191"
+sha2 = "=0.11.1"
+tantivy = { version = "=0.27.0", default-features = false, features = ["mmap", "lz4-compression"] }
+percent-encoding = "=2.3.2"
+reqwest = { version = "=0.13.5", default-features = false, features = ["rustls", "gzip", "brotli", "deflate"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+tokio = { version = "=1.54.1", features = ["io-std", "io-util", "macros", "rt", "sync", "time"] }
+
+[dev-dependencies]
+flate2 = "=1.1.11"
+tokio = { version = "=1.54.1", features = ["test-util"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
