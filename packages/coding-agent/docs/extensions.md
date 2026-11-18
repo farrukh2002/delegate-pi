@@ -1285,6 +1285,17 @@ if (usage?.tokens != null && usage.tokens > 100_000) {
 }
 ```
 
+### ctx.cacheWarmingStatus
+
+The session's prompt-cache warmer status, or `undefined` when the session runs none. It carries the warmer state (`inactive`, `scheduled`, `refreshing`), the next refresh time, and the cost decision (`warmCost`, `missCost`, `continuationProbability`, `action`). Treat it as a snapshot: read it when the decision matters.
+
+```typescript
+const warming = ctx.cacheWarmingStatus;
+if (warming?.state === "scheduled") {
+  console.log(`next cache warm in ${warming.nextWarmAt! - Date.now()}ms`);
+}
+```
+
 ### ctx.compact()
 
 Trigger compaction without awaiting completion. Use `onComplete` and `onError` for follow-up actions.
@@ -1300,6 +1311,23 @@ ctx.compact({
   },
 });
 ```
+
+### ctx.complete(request)
+
+Runs a one-shot model call outside the agent loop. It does not use tools or change the session. It uses the session's credentials and current model unless `request.model` names another model. The call returns usage but does not add it to the session totals. Call `pi.appendUsage()` to record the usage.
+
+```typescript
+const answer = await ctx.complete({
+  prompt: "Is this turn stuck? Reply JSON only.",
+  system: "You are a terse classifier.",
+  maxTokens: 200,
+  signal: AbortSignal.timeout(30_000),
+});
+pi.appendUsage("review", answer.provider, answer.model, answer.usage);
+console.log(answer.text);
+```
+
+The call rejects on failure or cancellation. It discards partial text from those responses.
 
 ### ctx.getSystemPrompt()
 

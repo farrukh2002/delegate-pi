@@ -59,7 +59,11 @@ import type {
 import type { Static, TSchema } from "typebox";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { BashResult } from "../bash-executor.ts";
-import type { CacheWarmingDecisionEvent, CacheWarmingDecisionEventResult } from "../cache-warmer.ts";
+import type {
+	CacheWarmingDecisionEvent,
+	CacheWarmingDecisionEventResult,
+	CacheWarmingStatus,
+} from "../cache-warmer.ts";
 import type { CompactionPreparation, CompactionResult } from "../compaction/index.ts";
 import type { EventBus } from "../event-bus.ts";
 import type { ExecOptions, ExecResult } from "../exec.ts";
@@ -348,6 +352,24 @@ export interface CompactOptions {
  */
 export type ExtensionMode = "tui" | "rpc" | "json" | "print";
 
+/** A one-shot model call made by an extension, outside the session's agent loop. */
+export interface ExtensionCompletionRequest {
+	prompt: string;
+	/** System prompt for this call only. The session's own prompt, tools and context files are not used. */
+	system?: string;
+	/** A `provider/model` or bare model id; the session's current model when omitted. */
+	model?: string;
+	maxTokens?: number;
+	signal?: AbortSignal;
+}
+
+export interface ExtensionCompletionResult {
+	text: string;
+	usage: Usage;
+	model: string;
+	provider: string;
+}
+
 export interface ExtensionContext {
 	/** UI methods for user interaction */
 	ui: ExtensionUIContext;
@@ -370,6 +392,8 @@ export interface ExtensionContext {
 	scopedModels: readonly ScopedModel[];
 	/** Current thinking level, when provided by the session runtime. */
 	thinkingLevel?: ThinkingLevel;
+	/** The prompt-cache warmer's status, when the session runs one. */
+	cacheWarmingStatus: CacheWarmingStatus | undefined;
 	/** Whether the agent is idle (not streaming) */
 	isIdle(): boolean;
 	/** Whether project-local trust is active for this context. */
@@ -388,6 +412,12 @@ export interface ExtensionContext {
 	compact(options?: CompactOptions): void;
 	/** Get the current effective system prompt. */
 	getSystemPrompt(): string;
+	/**
+	 * One-shot model call with no tools, no session mutation and no agent loop. It uses the
+	 * session's credentials and, unless `model` names another one, its current model. The
+	 * caller pays for it; `usage` is the provider's report for this call.
+	 */
+	complete(request: ExtensionCompletionRequest): Promise<ExtensionCompletionResult>;
 }
 
 /** Options for {@link ExtensionToolContext.executeTool}. */
@@ -2290,6 +2320,7 @@ export interface ExtensionContextActions {
 	hasPendingMessages: () => boolean;
 	shutdown: () => void;
 	getContextUsage: () => ContextUsage | undefined;
+	getCacheWarmingStatus?: () => CacheWarmingStatus | undefined;
 	compact: (options?: CompactOptions) => void;
 	getSystemPrompt: () => string;
 	getSystemPromptOptions?: () => BuildSystemPromptOptions;

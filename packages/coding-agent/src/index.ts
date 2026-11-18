@@ -24,6 +24,12 @@ export {
 	type SessionStats,
 } from "./core/agent-session.ts";
 export { readStoredCredential } from "./core/auth-storage.ts";
+export {
+	CACHE_TTL_MS,
+	type CacheMiss,
+	type CacheWasteTotals,
+	computeCacheWaste,
+} from "./core/cache-stats.ts";
 export type { CacheWarmingDecision, CacheWarmingStatus } from "./core/cache-warmer.ts";
 // Compaction
 export {

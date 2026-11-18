@@ -21,6 +21,68 @@ describe("AgentSession model and extension characterization", () => {
 		}
 	});
 
+	it.each(["error", "aborted"] as const)("rejects a side completion that stopped with %s", async (stopReason) => {
+		const errors: string[] = [];
+		const harness = await createHarness({
+			extensionFactories: [
+				(pi) => {
+					pi.on("session_start", async (_event, ctx) => {
+						await ctx.complete({ prompt: "Check this" });
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([fauxAssistantMessage("partial text", { stopReason, errorMessage: "Side call failed" })]);
+
+		await harness.session.bindExtensions({ onError: (error) => errors.push(error.error) });
+
+		expect(errors).toEqual(["Side call failed"]);
+		expect(harness.session.messages).toEqual([]);
+	});
+
+	it("returns side-call usage without recording it until the caller appends it", async () => {
+		const beforeCharge: unknown[] = [];
+		const results: { text: string; model: string; provider: string; usage: Usage }[] = [];
+		const harness = await createHarness({
+			extensionFactories: [
+				(pi) => {
+					pi.on("session_start", async (_event, ctx) => {
+						const result = await ctx.complete({ prompt: "Check this" });
+						results.push(result);
+						beforeCharge.push(...ctx.sessionManager.getEntries().filter((entry) => entry.type === "usage"));
+						pi.appendUsage("review", result.provider, result.model, result.usage);
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+		harness.setResponses([fauxAssistantMessage("check passed")]);
+
+		await harness.session.bindExtensions({});
+
+		const model = harness.getModel();
+		expect(results).toEqual([
+			{
+				text: "check passed",
+				provider: model.provider,
+				model: model.id,
+				usage: expect.objectContaining({ totalTokens: 7 }),
+			},
+		]);
+		expect(beforeCharge).toEqual([]);
+		expect(harness.session.messages).toEqual([]);
+		const entries = harness.sessionManager.getEntries().filter((entry) => entry.type === "usage");
+		expect(entries).toEqual([
+			expect.objectContaining({
+				kind: "review",
+				provider: model.provider,
+				model: model.id,
+				usage: results[0]?.usage,
+			}),
+		]);
+	});
+
 	it("setModel saves the model to the session and emits model_select", async () => {
 		const modelEvents: string[] = [];
 		const harness = await createHarness({

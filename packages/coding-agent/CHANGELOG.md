@@ -128,6 +128,8 @@
 - Added normalized `trace.jsonl` files for delegated children and exposed their location as `tracePath`.
 - Added delegate turn limits, a context-budget warning before the hard stop, and a guard against repeated tool calls. Use `delegate_tasks` with `steer` to give a running Pi child a new instruction.
 - Added `pi.appendUsage()` to record model usage outside the conversation. Delegate tasks use it to record child usage in the parent session.
+- Added `ctx.complete()` for one-shot model calls without tools or changes to the conversation. It returns usage on success and rejects failed or cancelled calls.
+- Added `ctx.cacheWarmingStatus` and the `CACHE_TTL_MS` and `computeCacheWaste` exports so extensions can check the state and cost of the prompt cache.
 
 ### Changed
 
