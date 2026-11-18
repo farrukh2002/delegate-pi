@@ -21,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CHANNEL: ${{ inputs.channel }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,14 +34,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Install Rust targets
-        run: rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
-
       - name: Build native helpers
-        run: npm run build:native
+        uses: ./.github/actions/build-native-helpers
 
       - name: Pick the version
         id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           base=$(node -p 'require("./packages/coding-agent/package.json").version')
           last=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName -q '.[].tagName' \
@@ -80,8 +78,13 @@ jobs:
           tar -xzf release/delegate-pi.tar.gz -C "$RUNNER_TEMP/smoke"
           node "$RUNNER_TEMP/smoke/delegate-pi/dist/bundle/cli.js" --version
 
+      - name: Smoke test packaged web engine
+        if: ${{ hashFiles('scripts/smoke-test-web-engine.mjs') != '' }}
+        run: PI_WEB_BIN="$RUNNER_TEMP/smoke/delegate-pi/dist/bin/pi-web-x64" node scripts/smoke-test-web-engine.mjs
+
       - name: Publish
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
