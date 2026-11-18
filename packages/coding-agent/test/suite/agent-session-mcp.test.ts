@@ -1035,7 +1035,11 @@ describe("AgentSession MCP servers registered by extensions", () => {
 	});
 
 	/** `configured` are the mcp.json servers; `plugins` register servers through the extension API. */
-	async function setup(plugins: ExtensionFactory | ExtensionFactory[], configured: McpServerEntry[] = []) {
+	async function setup(
+		plugins: ExtensionFactory | ExtensionFactory[],
+		configured: McpServerEntry[] = [],
+		onTransport?: (entry: McpServerEntry, client: ReturnType<typeof createFakeServer>["client"]) => void,
+	) {
 		const connected: McpServerEntry[] = [];
 		const harness = await createHarness({
 			initialActiveToolNames: [],
@@ -1047,6 +1051,7 @@ describe("AgentSession MCP servers registered by extensions", () => {
 					createTransport: (entry) => {
 						connected.push(entry);
 						const pair = createFakeServer([]);
+						onTransport?.(entry, pair.client);
 						void pair.server.start();
 						return pair.client;
 					},
@@ -1068,6 +1073,138 @@ describe("AgentSession MCP servers registered by extensions", () => {
 
 		expect(connected.map((entry) => [entry.name, entry.scope])).toEqual([["plugin", "extension"]]);
 		expect(harness.session.getActiveToolNames()).toContain("mcp__plugin__search");
+	});
+
+	it("disables and re-enables a server for the session through the extension API", async () => {
+		let api: ExtensionAPI | undefined;
+		const configured: McpServerEntry = {
+			name: "docs",
+			config: { url: "http://docs.invalid", exposure: "direct" },
+			source: "mcp.json",
+		};
+		const { harness } = await setup(
+			(pi) => {
+				api = pi;
+			},
+			[configured],
+		);
+		if (!api) throw new Error("No extension API");
+		const pi = api;
+		harness.setResponses([fauxAssistantMessage("ready")]);
+		await harness.session.prompt("start");
+		expect(harness.session.getActiveToolNames()).toContain("mcp__docs__search");
+
+		expect(pi.setMcpServerEnabled("docs", false)).toBe(true);
+		await vi.waitFor(() => expect(harness.session.getActiveToolNames()).not.toContain("mcp__docs__search"));
+		expect(harness.session.getCallableToolNames()).not.toContain("mcp__docs__search");
+
+		expect(pi.setMcpServerEnabled("docs", true)).toBe(true);
+		await vi.waitFor(() => expect(harness.session.getActiveToolNames()).toContain("mcp__docs__search"));
+		expect(pi.setMcpServerEnabled("missing", false)).toBe(false);
+	});
+
+	it("applies a session_start request before starting the configured server", async () => {
+		const disabled: boolean[] = [];
+		const { harness, connected } = await setup(
+			(pi) => {
+				pi.on("session_start", () => {
+					disabled.push(pi.setMcpServerEnabled("docs", false), pi.setMcpServerEnabled("missing", false));
+				});
+			},
+			[{ name: "docs", config: { url: "http://docs.invalid", exposure: "direct" }, source: "mcp.json" }],
+		);
+		harness.setResponses([fauxAssistantMessage("ready")]);
+		await harness.session.prompt("start");
+
+		expect(disabled).toEqual([true, false]);
+		expect(connected).toEqual([]);
+		expect(harness.session.getCallableToolNames()).not.toContain("mcp__docs__search");
+	});
+
+	it("does not enable a server disabled in the configuration", async () => {
+		let api: ExtensionAPI | undefined;
+		const configured: McpServerEntry = {
+			name: "docs",
+			config: { url: "http://docs.invalid", exposure: "direct", enabled: false },
+			source: "mcp.json",
+		};
+		const { harness, connected } = await setup(
+			(pi) => {
+				api = pi;
+			},
+			[configured],
+		);
+		if (!api) throw new Error("No extension API");
+		const pi = api;
+		expect(pi.setMcpServerEnabled("docs", false)).toBe(true);
+		expect(pi.setMcpServerEnabled("docs", true)).toBe(false);
+		harness.setResponses([fauxAssistantMessage("ready")]);
+		await harness.session.prompt("start");
+
+		expect(connected).toEqual([]);
+		expect(harness.session.getCallableToolNames()).not.toContain("mcp__docs__search");
+		expect(configured.config.enabled).toBe(false);
+	});
+
+	it("keeps a session-disabled server disabled when the registration changes", async () => {
+		let api: ExtensionAPI | undefined;
+		const { harness, connected } = await setup((pi) => {
+			api = pi;
+			pi.registerMcpServer("docs", { url: "http://old.invalid", exposure: "direct" });
+		});
+		if (!api) throw new Error("No extension API");
+		const pi = api;
+		await vi.waitFor(() => expect(harness.session.getActiveToolNames()).toContain("mcp__docs__search"));
+		expect(pi.setMcpServerEnabled("docs", false)).toBe(true);
+		pi.registerMcpServer("docs", { url: "http://new.invalid", exposure: "direct" });
+		harness.setResponses([fauxAssistantMessage("ready")]);
+		await harness.session.prompt("start");
+
+		expect(connected).toHaveLength(1);
+		expect(harness.session.getCallableToolNames()).not.toContain("mcp__docs__search");
+		expect(pi.setMcpServerEnabled("docs", true)).toBe(true);
+		await vi.waitFor(() => expect(harness.session.getActiveToolNames()).toContain("mcp__docs__search"));
+		expect(connected).toHaveLength(2);
+		expect(connected[1]?.config).toMatchObject({ url: "http://new.invalid" });
+	});
+
+	it("waits for a removed transport to close before connecting another with the same name", async () => {
+		let api: ExtensionAPI | undefined;
+		const releaseClose = Promise.withResolvers<void>();
+		const closing = vi.fn();
+		const { harness, connected } = await setup(
+			(pi) => {
+				api = pi;
+				pi.registerMcpServer("docs", { url: "http://old.invalid", exposure: "direct" });
+			},
+			[],
+			({ config }, client) => {
+				if (!("url" in config) || config.url !== "http://old.invalid") return;
+				const close = client.close.bind(client);
+				vi.spyOn(client, "close").mockImplementation(async () => {
+					closing();
+					await releaseClose.promise;
+					await close();
+				});
+			},
+		);
+		if (!api) throw new Error("No extension API");
+		const pi = api;
+		try {
+			await vi.waitFor(() => expect(harness.session.getActiveToolNames()).toContain("mcp__docs__search"));
+			pi.unregisterMcpServer("docs");
+			pi.registerMcpServer("docs", { url: "http://new.invalid", exposure: "direct" });
+			await new Promise((resolve) => setImmediate(resolve));
+
+			expect(closing).toHaveBeenCalledOnce();
+			expect(connected).toHaveLength(1);
+			expect(harness.session.getCallableToolNames()).not.toContain("mcp__docs__search");
+		} finally {
+			releaseClose.resolve();
+		}
+		await vi.waitFor(() => expect(harness.session.getActiveToolNames()).toContain("mcp__docs__search"));
+		expect(connected).toHaveLength(2);
+		expect(connected[1]?.config).toMatchObject({ url: "http://new.invalid" });
 	});
 
 	it("connects and disconnects servers registered during the session", async () => {

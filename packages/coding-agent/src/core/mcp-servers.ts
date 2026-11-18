@@ -13,6 +13,7 @@ import {
 	type McpStdioServerConfig as McpStdioServerFields,
 	validateMcpServerConfig as validateMcpServerFields,
 } from "@earendil-works/pi-mcp";
+import type { ExtensionContext } from "./extensions/types.ts";
 
 /**
  * Regular expression for a tool name pattern where `*` matches any characters, as `toolExposure`,
@@ -234,10 +235,23 @@ export interface RegisteredMcpServer {
 	extensionPath: string;
 }
 
+/** A session-scoped control requested by an extension, handled by the loaded MCP extension. */
+export type McpServerControl = (name: string, enabled: boolean, ctx: ExtensionContext) => boolean;
+
 /** Servers registered by the extensions of one runtime. */
 export class McpServerRegistry {
 	private readonly servers = new Map<string, RegisteredMcpServer>();
 	private changeListener: (() => void) | undefined;
+	private control: McpServerControl | undefined;
+
+	/** The MCP extension installs the session-scoped enable/disable handler. */
+	setControl(handler: McpServerControl | undefined): void {
+		this.control = handler;
+	}
+
+	setEnabled(name: string, enabled: boolean, createContext: () => ExtensionContext): boolean {
+		return this.control?.(name, enabled, createContext()) ?? false;
+	}
 
 	/** Register or replace a server. The caller checks ownership. */
 	register(server: RegisteredMcpServer): void {

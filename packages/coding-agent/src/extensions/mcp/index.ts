@@ -107,12 +107,12 @@ interface McpServer {
 	registeredConfig?: string;
 	/** Result of the last `/mcp` action that failed, shown in the manager. */
 	message?: string;
+	/** Disabled for this session by an extension; not written to `mcp.json`. */
+	sessionDisabled?: boolean;
 	/** Identifies the current connection attempt; disabling or replacing it invalidates earlier work. */
 	attempt?: symbol;
 	/** Settles when the connection started for the server connected or failed. */
 	ready?: Promise<void>;
-	/** Cleanup of a detached connection; a replacement waits for it before opening a transport. */
-	closing?: Promise<void>;
 }
 
 const EXPOSURE_DESCRIPTIONS: Record<Exclude<McpExposure, "hidden">, string> = {
@@ -129,8 +129,8 @@ function firstLine(text: string): string {
 	return text.split("\n", 1)[0] ?? "";
 }
 
-function isEnabled(server: Pick<McpServer, "entry">): boolean {
-	return server.entry.config.enabled !== false;
+function isEnabled(server: Pick<McpServer, "entry" | "sessionDisabled">): boolean {
+	return server.entry.config.enabled !== false && !server.sessionDisabled;
 }
 
 function exposureOf(entry: McpServerEntry): McpExposure {
@@ -179,6 +179,7 @@ function truncate(text: string, max: number): string {
 /** What the `mcp_servers` section needs of a server. */
 export interface McpServerListing {
 	entry: McpServerEntry;
+	sessionDisabled?: boolean;
 	connection?: { instructions?: string };
 }
 
@@ -277,8 +278,9 @@ const MCP_USAGE = "Usage: /mcp, /mcp login [server], /mcp logout [server], /mcp 
 export function createMcpExtension(options: McpExtensionOptions = {}): ExtensionFactory {
 	return (pi: ExtensionAPI) => {
 		let servers: McpServer[] = [];
-		/** Servers from `mcp.json`, which take precedence over registered servers of the same name. */
-		let configuredEntries: McpServerEntry[] = [];
+		let loadedConfig: LoadedMcpConfig | undefined;
+		const disabledBeforeStartup = new Set<string>();
+		const closingByName = new Map<string, Promise<void>>();
 		let configErrors: string[] = [];
 		/** The trusted project's `mcp.json`, where `/mcp` saves project overrides of global servers. */
 		let projectConfig: string | undefined;
@@ -338,13 +340,17 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 
 		const connections = () => servers.flatMap((server) => (server.connection ? [server.connection] : []));
 		const findServer = (name: string) => servers.find((server) => server.entry.name === name);
+		const sessionConfig = (ctx: ExtensionContext) => {
+			loadedConfig ??= (options.loadConfig ?? defaultLoadConfig)(ctx);
+			return loadedConfig;
+		};
 
 		/** Servers extensions registered, except names `mcp.json` defines, which take precedence. */
 		const registeredServers = (): { servers: McpServer[]; overridden: string[] } => {
 			const registered: McpServer[] = [];
 			const overriddenNames: string[] = [];
 			for (const { name, config, extensionPath } of pi.getMcpServers()) {
-				const configured = configuredEntries.find((entry) => mcpNamespace(entry.name) === mcpNamespace(name));
+				const configured = loadedConfig?.servers.find((entry) => mcpNamespace(entry.name) === mcpNamespace(name));
 				if (configured) {
 					overriddenNames.push(
 						`"${name}" registered by ${extensionPath} is overridden by "${configured.name}" in ${configured.source}`,
@@ -591,11 +597,12 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		const startConnection = (server: McpServer, after?: Promise<unknown>): Promise<void> => {
 			const { signal } = session;
 			const attempt = Symbol();
+			const closing = closingByName.get(server.entry.name);
 			server.attempt = attempt;
 			const isCurrent = () =>
 				!signal.aborted && server.attempt === attempt && isEnabled(server) && servers.includes(server);
 			const ready = (async () => {
-				await after;
+				await Promise.all([after, closing]);
 				if (!isCurrent()) return;
 				const connection = await createConnection(server, isCurrent);
 				if (!connection || !isCurrent()) return;
@@ -732,6 +739,60 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			}
 		};
 
+		const stopConnection = (server: McpServer): Promise<void> | undefined => {
+			const { connection, ready } = server;
+			const { name } = server.entry;
+			server.attempt = undefined;
+			server.connection = undefined;
+			if (!connection) return closingByName.get(name);
+			const closing = Promise.all([connection.close(), ready]).then(() => undefined);
+			closingByName.set(name, closing);
+			const clear = () => {
+				if (closingByName.get(name) === closing) closingByName.delete(name);
+			};
+			void track(closing.then(clear, clear));
+			return closing;
+		};
+
+		const setSessionEnabled = (name: string, enabled: boolean, ctx: ExtensionContext): boolean => {
+			const { signal } = session;
+			if (signal.aborted) {
+				const entry =
+					sessionConfig(ctx).servers.find((entry) => entry.name === name) ??
+					registeredServers().servers.find((server) => server.entry.name === name)?.entry;
+				if (!entry || (enabled && entry.config.enabled === false)) return false;
+				if (enabled) disabledBeforeStartup.delete(name);
+				else disabledBeforeStartup.add(name);
+				return true;
+			}
+			const server = findServer(name);
+			if (!server || (enabled && server.entry.config.enabled === false)) return false;
+			if (enabled === !server.sessionDisabled) return true;
+			server.sessionDisabled = !enabled;
+			if (enabled) {
+				const ready = startConnection(server);
+				const attempt = server.attempt;
+				void track(
+					ready.then(
+						() => {
+							if (!signal.aborted && server.attempt === attempt) reportProblems(ctx, [server]);
+						},
+						(error: unknown) => {
+							if (!signal.aborted && server.attempt === attempt) {
+								ctx.ui.notify(`MCP failed to load: ${errorMessage(error)}`, "error");
+							}
+						},
+					),
+				);
+				ensureDiscoveryActive(ctx);
+			} else {
+				stopConnection(server);
+				hideTools(name);
+			}
+			emitChange();
+			return true;
+		};
+
 		/** Returns an error message when the config could not be saved; connection errors show in the state. */
 		const setEnabled = async (
 			server: McpServer,
@@ -740,28 +801,19 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		): Promise<string | undefined> => {
 			const failed = saveConfig(server, { enabled }, inProject);
 			if (failed) return failed;
-			if (!enabled) {
-				const connection = server.connection;
-				server.attempt = undefined;
-				server.connection = undefined;
-				if (connection) {
-					// A reconnect may already have detached its old client while awaiting transport
-					// shutdown. Closing the connection alone does not wait for that reconnect.
-					server.closing = Promise.all([connection.close(), server.ready]).then(() => undefined);
-				}
-				const closing = server.closing;
+			if (enabled) {
+				server.sessionDisabled = false;
+				await startConnection(server);
+			} else {
+				const closing = stopConnection(server);
 				hideTools(server.entry.name);
 				emitChange();
-				try {
-					await closing;
-				} finally {
-					if (server.closing === closing) server.closing = undefined;
-				}
-				return undefined;
+				await closing;
 			}
-			await startConnection(server, server.closing);
 			return undefined;
 		};
+
+		pi.registerMcpServerControl(setSessionEnabled);
 
 		const setExposure = (server: McpServer, exposure: McpExposure): string | undefined => {
 			const failed = saveConfig(server, { exposure });
@@ -1110,7 +1162,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 		};
 
 		pi.on("session_start", (_event, ctx) => {
-			const loaded = (options.loadConfig ?? defaultLoadConfig)(ctx);
+			const loaded = sessionConfig(ctx);
 			configErrors = loaded.errors;
 			projectConfig = loaded.projectConfig;
 			autoEnableCodemode = loaded.autoEnableCodemode ?? true;
@@ -1120,10 +1172,11 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			modelRegistry = ctx.modelRegistry;
 			session = new AbortController();
 			const { signal } = session;
-			configuredEntries = loaded.servers;
 			const registered = registeredServers();
 			overridden = registered.overridden;
 			servers = [...loaded.servers.map((entry) => ({ entry })), ...registered.servers];
+			for (const server of servers) server.sessionDisabled = disabledBeforeStartup.has(server.entry.name);
+			disabledBeforeStartup.clear();
 			emitChange();
 			// Codemode or tool_search is activated from the config: the first prompt does not wait for
 			// servers whose tools are not declared to the model, and scripts or searches wait for them.
@@ -1225,22 +1278,21 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 					next.get(server.entry.name)?.registeredConfig !== server.registeredConfig,
 			);
 			servers = servers.filter((server) => !removed.includes(server));
+			const closing = removed.map((server) => stopConnection(server));
 			for (const server of removed) hideTools(server.entry.name);
 			const added = registered.servers.filter((server) => !findServer(server.entry.name));
+			for (const server of added) {
+				server.sessionDisabled = removed.find((old) => old.entry.name === server.entry.name)?.sessionDisabled;
+			}
 			servers.push(...added);
+			const connecting = added.filter(isEnabled);
+			const ready = connecting.map((server) => startConnection(server));
 			emitChange();
 			ensureDiscoveryActive(ctx);
-			await Promise.all(removed.map((server) => server.connection?.close()));
-			const connecting = added.filter(isEnabled);
-			if (signal.aborted || connecting.length === 0) return;
 			try {
-				await Promise.all(connecting.map((server) => startConnection(server)));
-				if (signal.aborted) {
-					await Promise.all(connecting.map((server) => server.connection?.close()));
-					return;
-				}
+				await Promise.all([...closing, ...ready]);
 			} catch (error) {
-				ctx.ui.notify(`MCP failed to load: ${errorMessage(error)}`, "error");
+				if (!signal.aborted) ctx.ui.notify(`MCP failed to load: ${errorMessage(error)}`, "error");
 				return;
 			}
 			if (signal.aborted) return;
@@ -1251,6 +1303,9 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			session.abort();
 			const closing = connections();
 			servers = [];
+			loadedConfig = undefined;
+			disabledBeforeStartup.clear();
+			pending = undefined;
 			emitChange();
 			await Promise.all([...backgroundActions, ...closing.map((connection) => connection.close())]);
 		});

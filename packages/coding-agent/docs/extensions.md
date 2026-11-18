@@ -2171,6 +2171,18 @@ Register a selectable catalog entry that routes each request to a physical model
 
 Register an MCP server for the current session. See [MCP Servers](#mcp-servers).
 
+### pi.setMcpServerEnabled(name, enabled) / pi.registerMcpServerControl(handler)
+
+Disable or re-enable an MCP server for this session. You can call this from `session_start`, even if the MCP extension has not started its connections. Disabling hides the server's tools, removes it from the next `mcp_servers` prompt section, and closes its connection. Re-enabling starts a new connection in the background. Neither action writes to `mcp.json`.
+
+The loaded MCP extension installs the handler with `registerMcpServerControl(handler)`. The handler receives `(name, enabled, ctx)`. `setMcpServerEnabled` returns `false` if no handler is loaded, the name is unknown, or the configuration prevents enabling the server.
+
+```typescript
+pi.on("session_start", () => {
+  pi.setMcpServerEnabled("jira", false);
+});
+```
+
 ### pi.registerToolRenderer(resolver)
 
 Choose how calls to any tool are drawn, including tools that are not registered yet, such as MCP tools in a resumed session before their server connected. The resolver receives the tool name and `next()`, which returns what the remaining resolvers (in extension load order), then the registered tool, would use, so `next() ?? mine` only fills in.
@@ -2860,6 +2872,8 @@ pi.unregisterMcpServer("jira");
 Servers registered while the extension loads connect when the session starts, together with the `mcp.json` servers; servers registered later connect right away, and `pi.unregisterMcpServer()` closes the connection and makes the server's tools unreachable. Registrations are not saved: register again on every load, for example based on the extension's own settings. A server in `mcp.json` with the same name takes precedence, and `/mcp` shows the override. Registering the same name again replaces the extension's earlier registration; names registered by another extension, invalid names, and invalid configs throw.
 
 The built-in MCP support connects registered servers. When nothing does, because another extension replaced it (see [MCP](mcp.md#replace-the-built-in-mcp-support)), each registration is reported as an extension error. Other MCP extensions can connect registered servers too: read them with `pi.getMcpServers()` on `session_start` and handle the `mcp_servers_change` event for later changes.
+
+The built-in MCP extension supports [session-scoped enable and disable requests](#pisetmcpserverenabledname-enabled--piregistermcpservercontrolhandler). Setting `false` for a server hides all its tools. Setting `true` can re-enable it only if its configuration permits it.
 
 <a id="interact-with-the-user"></a>
 

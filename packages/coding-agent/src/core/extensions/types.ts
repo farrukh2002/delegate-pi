@@ -69,7 +69,7 @@ import type { EventBus } from "../event-bus.ts";
 import type { ExecOptions, ExecResult } from "../exec.ts";
 import type { ReadonlyFooterDataProvider } from "../footer-data-provider.ts";
 import type { KeybindingsManager } from "../keybindings.ts";
-import type { McpServerConfig, McpServerRegistry, RegisteredMcpServer } from "../mcp-servers.ts";
+import type { McpServerConfig, McpServerControl, McpServerRegistry, RegisteredMcpServer } from "../mcp-servers.ts";
 import type { CustomMessage } from "../messages.ts";
 import type { ModelRegistry } from "../model-registry.ts";
 import type { ScopedModel } from "../model-resolver.ts";
@@ -1984,6 +1984,21 @@ export interface ExtensionAPI {
 
 	/** Every MCP server registered by extensions. For extensions that connect MCP servers. */
 	getMcpServers(): RegisteredMcpServer[];
+
+	/**
+	 * Install the handler for session-scoped MCP server enable/disable requests. The loaded MCP
+	 * extension owns this; a second handler replaces the first. The change lasts for this session
+	 * and is not written to `mcp.json`.
+	 */
+	registerMcpServerControl(handler: McpServerControl): void;
+
+	/**
+	 * Disable or re-enable a whole MCP server for this session, from `session_start` onward.
+	 * Disabling closes its connection, hides its tools and removes it from the `mcp_servers` prompt
+	 * section. Returns false if no handler is loaded, the name is unknown, or the configuration
+	 * prevents enabling the server.
+	 */
+	setMcpServerEnabled(name: string, enabled: boolean): boolean;
 
 	/**
 	 * Register a virtual model: a selectable catalog entry that routes each request to a physical

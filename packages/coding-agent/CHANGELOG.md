@@ -15,6 +15,7 @@
 - Added `pi.appendUsage()` to record model usage outside the conversation. Delegate tasks use it to record child usage in the parent session.
 - Added `ctx.complete()` for one-shot model calls without tools or changes to the conversation. It returns usage on success and rejects failed or cancelled calls.
 - Added `ctx.cacheWarmingStatus` and the `CACHE_TTL_MS` and `computeCacheWaste` exports so extensions can check the state and cost of the prompt cache.
+- Added session-scoped MCP server controls with `pi.setMcpServerEnabled()` and `pi.registerMcpServerControl()`. Extensions can disable a server at session startup without editing `mcp.json`.
 
 ### Changed
 
