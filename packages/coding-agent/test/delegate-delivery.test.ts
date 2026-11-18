@@ -37,6 +37,7 @@ class FakeTransport implements DelegateTransport {
 	absent = new Set<string>();
 	statusGone = new Set<string>();
 	cancels: string[] = [];
+	steers: { taskId: string; message: string }[] = [];
 	private counter = 0;
 
 	complete(id: string, status = "completed", extra: Partial<DelegateState> = {}): DelegateState {
@@ -83,6 +84,9 @@ class FakeTransport implements DelegateTransport {
 	async cancel(id: string): Promise<DelegateState> {
 		this.cancels.push(id);
 		return this.complete(id, "cancelled");
+	}
+	async steer(taskId: string, message: string): Promise<void> {
+		this.steers.push({ taskId, message });
 	}
 	async diff(): Promise<string> {
 		return "diff body";
@@ -157,7 +161,7 @@ function makeCtx(entries: SessionEntry[], sessionId: string, ui: DelegateUI): un
 			setWidget: () => {},
 			onTerminalInput: () => () => {},
 		},
-		sessionManager: { getBranch: () => entries, getSessionId: () => sessionId },
+		sessionManager: { getBranch: () => entries, getEntries: () => entries, getSessionId: () => sessionId },
 	};
 }
 
@@ -239,6 +243,7 @@ interface HostUi {
 	sessionId: string;
 	cwd: string;
 	branchEntries: () => SessionEntry[];
+	sessionEntries: () => SessionEntry[];
 	ui: DelegateUI;
 }
 
@@ -252,6 +257,7 @@ function rawManager(transport: FakeTransport, entries: SessionEntry[], ui: Deleg
 		sessionId: "session-a",
 		cwd: "/tmp/project",
 		branchEntries: () => entries,
+		sessionEntries: () => entries,
 		ui,
 	};
 	manager.setHost(host);

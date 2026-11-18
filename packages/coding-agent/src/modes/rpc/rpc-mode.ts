@@ -13,6 +13,7 @@
 
 import * as crypto from "node:crypto";
 import type { AgentSessionRuntime } from "../../core/agent-session-runtime.ts";
+import { installDelegateTurnLimit } from "../../core/delegate/turn-limit.ts";
 import type {
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
@@ -321,8 +322,21 @@ export async function runRpcMode(runtimeHost: AgentSessionRuntime): Promise<neve
 		writeDiagnosticsToStderr(runtimeHost.takeUnreportedDiagnostics());
 	});
 
+	const maxDelegateTurns = Number(process.env.DELEGATE_MAX_TURNS);
+	const limitedAgents = new WeakSet<typeof session.agent>();
 	const rebindSession = async (): Promise<void> => {
 		session = runtimeHost.session;
+		if (
+			process.env.DELEGATE_DEPTH === "1" &&
+			Number.isSafeInteger(maxDelegateTurns) &&
+			maxDelegateTurns > 0 &&
+			!limitedAgents.has(session.agent)
+		) {
+			limitedAgents.add(session.agent);
+			installDelegateTurnLimit(session.agent, maxDelegateTurns, (turns) =>
+				output({ type: "delegate_turn_limit", turns }),
+			);
+		}
 		// Subscribe before binding so events emitted by session_start handlers (e.g. appended entries) reach the client.
 		unsubscribe?.();
 		unsubscribeBackpressure?.();

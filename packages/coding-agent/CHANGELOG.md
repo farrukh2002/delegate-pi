@@ -10,6 +10,9 @@
 
 - Added `deepseek-v4.1-flash` and `deepseek-v4.1-flash-1017` to the Qwen Token Plan Individual providers, and per-plan key variables `QWEN_TOKEN_PLAN_TEAM_API_KEY`, `QWEN_TOKEN_PLAN_TEAM_CN_API_KEY`, `QWEN_TOKEN_PLAN_INDIVIDUAL_API_KEY`, and `QWEN_TOKEN_PLAN_INDIVIDUAL_CN_API_KEY`; the shared `QWEN_TOKEN_PLAN_API_KEY` and `QWEN_TOKEN_PLAN_CN_API_KEY` still work ([#11773](https://github.com/earendil-works/pi/issues/11773))
 - Added the Linux [native web tools](docs/web-engine.md) for HTTP requests, web search, page retrieval, and Git indexing, search, and reads. Git reads can resume within long UTF-8 lines. Rebuild any version 1 Git index before use.
+- Added normalized `trace.jsonl` files for delegated children and exposed their location as `tracePath`.
+- Added delegate turn limits, a context-budget warning before the hard stop, and a guard against repeated tool calls. Use `delegate_tasks` with `steer` to give a running Pi child a new instruction.
+- Added `pi.appendUsage()` to record model usage outside the conversation. Delegate tasks use it to record child usage in the parent session.
 
 ### Changed
 
@@ -47,6 +50,8 @@
 - Fixed `Could not restore model <provider>/<model>. Using <fallback>` being shown only at interactive startup. Resuming or forking into a session whose model no longer exists or has no login switched to another model without notice, and print, JSON and RPC modes never showed it. It is now reported in every mode, at startup and after `/resume`, `/fork` and RPC `switch_session` or `fork`
 - Fixed git and npm output, such as `Cloning into ...` or `added 12 packages`, being drawn over the interactive TUI when pi installed or refreshed packages during `/reload`, `/new`, `/resume` and `/fork`, including temporary `-e git:` and `-e npm:` packages. In interactive mode their output is now captured, and a failed install reports the end of it. Until the TUI starts, each install is announced as `Installing <source>...` on stderr instead of showing git and npm output. git and ssh can no longer prompt in interactive mode: a package that needs a typed password or passphrase fails with a hint to set up a credential helper or ssh agent, or to run `pi install <source>` once from the shell. `pi install` and `pi update` keep live output ([#11264](https://github.com/earendil-works/pi/issues/11264))
 - Fixed fullscreen scrolling in long sessions saturating a CPU core by re-rendering the whole transcript on every wheel event ([#9549](https://github.com/earendil-works/pi/issues/9549))
+- Fixed delegate snapshots missing same-size edits. `accept` and `undo` keep the final state and any trace until `prune` removes them.
+- Fixed delegate `accept` and `undo` missing final usage when they run before the next status check.
 
 ### Removed
 

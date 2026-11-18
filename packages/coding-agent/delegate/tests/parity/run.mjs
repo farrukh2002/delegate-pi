@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -25,12 +26,14 @@ const VOLATILE = new Set([
 	"childPid",
 	"lastOutputAt",
 	"logPath",
+	"tracePath",
 	"cwd",
 	"queuedBehind",
 ]);
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
 
 const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "delegate-parity-")));
+if (!keep) process.on("exit", () => fs.rmSync(base, { recursive: true, force: true }));
 const data = path.join(base, "data");
 process.env.DELEGATE_DATA = data;
 process.env.PATH = "/usr/bin:/bin";
@@ -83,11 +86,17 @@ function setup(name, scenario) {
 	git(project, ["init", "-q", "-b", "main"]);
 	fs.writeFileSync(path.join(project, "README.md"), "project\n");
 	for (const [rel, text] of Object.entries(scenario.files ?? {})) {
-		fs.mkdirSync(path.dirname(path.join(project, rel)), { recursive: true });
-		fs.writeFileSync(path.join(project, rel), text);
+		const file = path.join(project, rel);
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.writeFileSync(file, text);
+		if (scenario.indexTime) fs.utimesSync(file, scenario.indexTime, scenario.indexTime);
 	}
 	git(project, ["add", "-A"]);
 	git(project, ["commit", "-q", "-m", "init"]);
+	if (scenario.indexTime) {
+		git(project, ["config", "core.trustctime", "false"]);
+		fs.utimesSync(path.join(project, ".git/index"), scenario.indexTime, scenario.indexTime);
+	}
 	if (scenario.preclaim) {
 		const holder = path.join(data, "tasks", scenario.preclaim.taskId);
 		fs.mkdirSync(holder, { recursive: true });
@@ -112,7 +121,7 @@ function setup(name, scenario) {
 	}
 	process.env.PATH = `${pkg}:/usr/bin:/bin`;
 	const script = path.join(pkg, "script.json");
-	fs.writeFileSync(script, JSON.stringify({ steps: scenario.steps }));
+	fs.writeFileSync(script, JSON.stringify({ steps: scenario.steps, maxTurns: scenario.provider === "codex" ? undefined : scenario.maxTurns }));
 	process.env.DELEGATE_PI_ENTRY = fake;
 	process.env.DELEGATE_PI_PACKAGE_DIR = pkg;
 	process.env.DELEGATE_WORKER = impl;
@@ -130,11 +139,15 @@ async function run(name, scenario) {
 		cwd: where.project,
 		timeoutMs: 60000,
 		noProgressMs: scenario.noProgressMs,
+		maxTurns: scenario.maxTurns,
+		contextBudget: scenario.contextBudget,
 	});
 	const trace = [];
 	const t0 = Date.now();
 	let answered = false;
 	let cancelled = false;
+	let steerQueued = false;
+	let finalState;
 	try {
 		for (;;) {
 			const state = core.status(started.taskId);
@@ -148,13 +161,20 @@ async function run(name, scenario) {
 					answered = true;
 				} catch {}
 			}
+			if (scenario.steer && !steerQueued && state.status === "running" && state.childPid) {
+				core.steer(started.taskId, scenario.steer);
+				steerQueued = true;
+			}
 			if (scenario.cancelAfterMs && !cancelled && Date.now() - t0 >= scenario.cancelAfterMs) {
 				cancelled = true;
 				try {
 					await core.cancel(started.taskId);
 				} catch {}
 			}
-			if (TERMINAL.has(state.status)) break;
+			if (TERMINAL.has(state.status)) {
+				finalState = state;
+				break;
+			}
 			if (Date.now() - t0 > (scenario.maxMs ?? 90000)) throw new Error(`timeout: ${JSON.stringify(state)}`);
 			await sleep(100);
 		}
@@ -165,6 +185,40 @@ async function run(name, scenario) {
 		throw error;
 	}
 	const last = trace.at(-1).state;
+	if (scenario.steer && (last.status !== "completed" || last.steers !== 1 || last.steerError)) {
+		throw new Error(`steering was not acknowledged: ${JSON.stringify(last)}`);
+	}
+	const taskDir = path.join(data, "tasks", started.taskId);
+	const tracePath = path.join(taskDir, "trace.jsonl");
+	assert.equal(finalState.tracePath, tracePath, `${name}: trace path`);
+	assert.equal(fs.statSync(tracePath).mode & 0o777, 0o600, `${name}: trace permissions`);
+	const evidence = fs.readFileSync(tracePath, "utf8");
+	const [task, ...events] = evidence.trimEnd().split("\n").map((line) => JSON.parse(line));
+	assert.deepEqual(task, { type: "user", message: { role: "user", content: `parity ${name}` } });
+	if (scenario.trace) assert.deepEqual(events, scenario.trace, `${name}: trace events`);
+	if (scenario.expect) {
+		const { turns, summaryPrefix, files, traceText, ...fields } = scenario.expect;
+		for (const [key, value] of Object.entries(fields)) assert.deepEqual(finalState[key], value, `${name}: ${key}`);
+		if (turns !== undefined) assert.equal(finalState.usage.turns, turns, `${name}: turns`);
+		if (summaryPrefix) assert.ok(finalState.summary.startsWith(summaryPrefix), `${name}: ${finalState.summary}`);
+		if (traceText) assert.ok(evidence.includes(traceText), `${name}: expected the trace to contain ${traceText}`);
+		for (const [file, content] of Object.entries(files ?? {})) {
+			const full = path.join(where.project, file);
+			assert.equal(fs.existsSync(full) ? fs.readFileSync(full, "utf8") : null, content, `${name}: ${file}`);
+		}
+	}
+	if (scenario.settle) {
+		const settled = scenario.settle === "undo" ? core.undo(started.taskId) : core.accept(started.taskId);
+		assert.equal(settled.tracePath, tracePath);
+		assert.equal(fs.readFileSync(tracePath, "utf8"), evidence);
+		assert.deepEqual(fs.readdirSync(taskDir).sort(), ["state.json", "trace.jsonl"]);
+		if (scenario.settle === "undo") {
+			assert.deepEqual(settled.restored, Object.keys(scenario.files), `${name}: undo (diffstat: ${finalState.diffstat})`);
+			for (const [file, content] of Object.entries(scenario.files)) {
+				assert.equal(fs.readFileSync(path.join(where.project, file), "utf8"), content, `${name}: restored ${file}`);
+			}
+		}
+	}
 	const statuses = [];
 	for (const entry of trace) if (!statuses.includes(entry.state.status)) statuses.push(entry.state.status);
 	return {
@@ -222,7 +276,6 @@ for (const result of results) {
 	);
 }
 
-if (!keep) fs.rmSync(base, { recursive: true, force: true });
 if (failures) {
 	console.log(`\n${failures} scenario(s) differ from golden`);
 	process.exitCode = 1;

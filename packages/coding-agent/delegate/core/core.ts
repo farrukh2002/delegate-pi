@@ -10,7 +10,10 @@ import { PROVIDERS, insertInvocationFlags, isProviderId, piEntryProblem, provide
 import { checkModel } from "./models.ts";
 export { listModels } from "./models.ts";
 export { findAgent } from "./agents.ts";
+import { checkBudget } from "./budget.ts";
+import { createLoopGuard, type LoopVerdict } from "./loop.ts";
 import { closeHome, prepareHome, sandboxInvocation, executable } from "./sandbox.ts";
+import { traceWriter } from "./trace.ts";
 import { emptyUsage } from "./types.ts";
 import { DATA, HEARTBEAT_STALE_MS, TASKS, acquireScope, acquireSlot, checkScopeTracked, claimMessage, claimPaths, releaseClaims, releaseScope, releaseSlot, diff as diffScope, diffstat, dropRefs, gitMounts, ignoredPaths, listParents, normalizeScope, prepareScope, requireRepository, scopeLayout, scratchPaths, sleep, snapshot, strayFiles, undo as undoScope, markWorkerGone, pidAlive, workerGone } from "./workspace.ts";
 
@@ -20,6 +23,7 @@ export { HEARTBEAT_STALE_MS, MAX_TASKS };
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const TERMINAL = new Set(STOPPED);
+const STEERABLE = new Set(["pi"]);
 
 function instruction(scope: string[]): string {
 	const access = !scope.length
@@ -55,6 +59,7 @@ export interface DelegateRequest {
 	timeoutMs?: number;
 	noProgressMs?: number;
 	contextBudget?: number;
+	maxTurns?: number;
 	cwd?: string;
 	sandbox?: string;
 	trustProjectAgents?: boolean;
@@ -164,6 +169,8 @@ export function start(request: DelegateRequest): any {
 	const scratch = scratchPaths(cwd, scope, request.scratch);
 	const timeoutMs = request.timeoutMs ?? 900000;
 	const noProgressMs = Number(request.noProgressMs ?? process.env.DELEGATE_NO_PROGRESS_MS ?? 600000);
+	const maxTurns = request.maxTurns ?? agent?.maxTurns ?? 0;
+	if (!Number.isSafeInteger(maxTurns) || maxTurns < 0) throw new Error("maxTurns must be a non-negative integer (0 turns the limit off)");
 	const contextBudget = Number(request.contextBudget ?? 0);
 	if (contextBudget && (!Number.isInteger(contextBudget) || contextBudget < 10000)) throw new Error("contextBudget must be 0 (off) or an integer of at least 10000");
 	if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 86400000) throw new Error("timeoutMs must be an integer from 1000 to 86400000");
@@ -172,9 +179,9 @@ export function start(request: DelegateRequest): any {
 	const id = randomUUID();
 	const dir = taskDir(id);
 	fs.mkdirSync(dir, { mode: 0o700 });
-	const resolved = { ...request, cwd, provider, runtimeMode, scope, scratch, tools: toToolList(request.tools ?? agent?.tools), timeoutMs, noProgressMs, contextBudget, model: request.model || agent?.model, systemPrompt: agent?.systemPrompt || "", maxTurns: agent?.maxTurns };
+	const resolved = { ...request, cwd, provider, runtimeMode, scope, scratch, tools: toToolList(request.tools ?? agent?.tools), timeoutMs, noProgressMs, contextBudget, model: request.model || agent?.model, systemPrompt: agent?.systemPrompt || "", maxTurns };
 	atomic(path.join(dir, "request.json"), resolved);
-	atomic(path.join(dir, "state.json"), { taskId: id, agent: request.agent || "direct", provider, status: "starting", sandbox: "fs", runtimeMode, cwd, scope, createdAt: Date.now(), summary: "Starting sandboxed child", usage: emptyUsage(), costUsd: null, pending: [] });
+	atomic(path.join(dir, "state.json"), { taskId: id, agent: request.agent || "direct", provider, status: "starting", sandbox: "fs", runtimeMode, cwd, scope, createdAt: Date.now(), summary: "Starting sandboxed child", usage: emptyUsage(), costUsd: null, model: resolved.model, tracePath: path.join(dir, "trace.jsonl"), pending: [] });
 	const log = fs.openSync(path.join(dir, "worker.log"), "a", 0o600);
 	try {
 		const binary = workerBinary();
@@ -235,6 +242,30 @@ export function answer(id: string, requestId: string, value: { answer?: string; 
 	return { taskId: id, requestId, accepted: true };
 }
 
+export function steer(id: string, message: string): any {
+	parentOnly();
+	const state = status(id);
+	if (TERMINAL.has(state.status)) throw new Error("The task has already stopped");
+	if (state.status !== "running" && state.status !== "waiting") throw new Error("The task is not running yet");
+	if (!STEERABLE.has(state.provider)) throw new Error(`${state.provider} children do not support steering; cancel and restart it`);
+	const text = typeof message === "string" ? message.trim() : "";
+	if (!text || text.length > 8000) throw new Error("Steering needs a nonempty message of at most 8000 characters");
+	const file = path.join(taskDir(id), "steer.json");
+	const temp = `${file}.${randomUUID()}.tmp`;
+	fs.writeFileSync(temp, JSON.stringify({ message: text, at: Date.now() }), { mode: 0o600, flag: "wx" });
+	try {
+		fs.linkSync(temp, file);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+			throw new Error("A steering request is already pending for this task");
+		}
+		throw error;
+	} finally {
+		fs.unlinkSync(temp);
+	}
+	return { taskId: id, steered: true };
+}
+
 export async function cancel(id: string): Promise<any> {
 	parentOnly();
 	const state = status(id);
@@ -264,8 +295,7 @@ export function accept(id: string): any {
 	}
 	releaseClaims(input.cwd, id);
 	Object.assign(state, { scopeHeld: false, accepted: true, acceptedAt: Date.now() });
-	atomic(path.join(taskDir(id), "state.json"), state);
-	fs.rmSync(taskDir(id), { recursive: true, force: true });
+	keepSettledTask(taskDir(id), state);
 	return state;
 }
 
@@ -276,9 +306,20 @@ export function undo(id: string, force = false): any {
 	releaseScope(input.cwd, id);
 	releaseClaims(input.cwd, id);
 	Object.assign(state, { scopeHeld: false, undone: true, undoneAt: Date.now(), restored });
-	atomic(path.join(taskDir(id), "state.json"), state);
-	fs.rmSync(taskDir(id), { recursive: true, force: true });
+	keepSettledTask(taskDir(id), state);
 	return state;
+}
+
+function keepSettledTask(dir: string, state: { logPath?: string; tracePath?: string }): void {
+	closeHome(dir);
+	delete state.logPath;
+	const tracePath = path.join(dir, "trace.jsonl");
+	if (fs.existsSync(tracePath)) state.tracePath = tracePath;
+	else delete state.tracePath;
+	atomic(path.join(dir, "state.json"), state);
+	for (const name of fs.readdirSync(dir)) {
+		if (name !== "state.json" && name !== "trace.jsonl") fs.rmSync(path.join(dir, name), { recursive: true, force: true });
+	}
 }
 
 export function parseOlderThan(value?: string): number {
@@ -326,7 +367,8 @@ function removeTask(id: string, dir: string): void {
 }
 
 export function diff(id: string): any {
-	parentOnly();
+	const state = status(id);
+	if (state.accepted || state.undone) return { taskId: id, diff: "" };
 	const input = readJson(path.join(taskDir(id), "request.json"));
 	if (!input.scope?.length) return { taskId: id, diff: "" };
 	return { taskId: id, diff: diffScope(input.cwd, id, input.scope) };
@@ -370,6 +412,7 @@ export async function runWorker(id: string): Promise<void> {
 	let closed = false;
 	let denied = false;
 	let errorText = "";
+	let guardStop = "";
 	let lastOutputAt = Date.now();
 	let lastTick = lastOutputAt;
 	let activeMs = 0;
@@ -382,13 +425,30 @@ export async function runWorker(id: string): Promise<void> {
 	const watchers: fs.FSWatcher[] = [];
 	const sockets = new Map<string, net.Socket>();
 	const connections = new Set<net.Socket>();
+	// Learning-only: TE folds this into the parent's microskills store. The parent session's
+	// usage entries carry the cost, so the trace has no cost field of its own.
+	const trace = traceWriter(String(state.tracePath ?? path.join(dir, "trace.jsonl")),
+		String(input.task ?? ""), () => state.model);
+	const loop = createLoopGuard();
+	let pendingLoop: { verdict: Exclude<LoopVerdict, { action: "none" }>; at: number } | undefined;
 	const stop = (reason: string) => {
-		if (closed || stopped) return;
+		if (stopped) return;
 		stopped = reason;
-		if (child?.pid) {
+		if (!closed && child?.pid) {
 			try { process.kill(-child.pid, "SIGTERM"); } catch {}
 			escalation = setTimeout(() => { if (!closed && child?.pid) { try { process.kill(-child.pid, "SIGKILL"); } catch {} } }, 2000);
 		}
+	};
+	const block = (reason: string) => {
+		if (stopped) return;
+		guardStop = reason;
+		stop("blocked");
+	};
+	const enforceBudget = (startingNextTurn = false) => {
+		if (stopped) return;
+		const budget = checkBudget(input, state.usage, state.budgetNotice, startingNextTurn);
+		if (budget.notice) { state.budgetNotice = budget.notice; save(); }
+		if (budget.stop) block(budget.stop);
 	};
 	const onSignal = () => stop("cancelled");
 	process.on("SIGTERM", onSignal);
@@ -479,12 +539,14 @@ export async function runWorker(id: string): Promise<void> {
 			fs.chmodSync(socketPath, 0o600);
 			prepareHome(path.join(dir, "home"), input.provider);
 			const provider = PROVIDERS[input.provider as keyof typeof PROVIDERS];
-			let invocation = provider.build({ prompt: `${input.systemPrompt}\n\n${instruction(scope)}\n\nTask: ${input.task}`, model: input.model, maxTurns: input.maxTurns, tools: input.tools });
+			const prompt = `${input.systemPrompt}\n\n${instruction(scope)}\n\nTask: ${input.task}`;
+			let invocation = provider.build({ prompt, model: input.model, maxTurns: input.maxTurns, tools: input.tools });
 			if (input.provider === "pi") invocation = insertInvocationFlags(invocation, ["--extension", "/delegate/child-pi.ts"]);
 			if (input.provider === "claude") invocation.args.unshift("--setting-sources", "user");
 			const layout = scopeLayout(input.cwd, scope);
 			parentListing = listParents(input.cwd, layout);
 			const wrapped = sandboxInvocation(invocation, { project: input.cwd, layout, scratch: input.scratch ?? [], git: gitMounts(input.cwd) }, dir, input.provider, input.runtimeMode);
+			if (input.provider === "pi" && input.maxTurns > 0) wrapped.env.DELEGATE_MAX_TURNS = String(input.maxTurns);
 			state.status = "running";
 			state.startedAt = Date.now();
 			state.summary = "Running inside the filesystem sandbox";
@@ -521,22 +583,103 @@ export async function runWorker(id: string): Promise<void> {
 			let providerError = false;
 			let buffer = "";
 			const seen = new Map<string, any>();
+			const steerFile = path.join(dir, "steer.json");
+			const pendingSteers = new Map<string, { source: "guard" | "parent"; preview: string }>();
+			let promptAccepted = false;
+			let rpcClosed = false;
+			let parentSteerPending = false;
+			const sendSteer = (message: string, source: "guard" | "parent" = "guard"): boolean => {
+				if (!promptAccepted || rpcClosed || !child?.stdin?.writable) return false;
+				try {
+					const id = `steer-${randomUUID()}`;
+					child.stdin.write(JSON.stringify({ id, type: "steer", message }) + "\n");
+					pendingSteers.set(id, { source, preview: message.slice(0, 180) });
+					return true;
+				} catch {
+					return false;
+				}
+			};
+			const closeRpcInput = () => {
+				if (provider.stdin !== "rpc" || rpcClosed) return;
+				rpcClosed = true;
+				child?.stdin?.end();
+				if (parentSteerPending || fs.existsSync(steerFile)) {
+					state.steerError = "Pi stopped before acknowledging the steering request.";
+					fs.rmSync(steerFile, { force: true });
+				}
+				pendingSteers.clear();
+			};
+			const checkLoop = () => {
+				if (stopped || !pendingLoop || performance.now() < pendingLoop.at) return;
+				const { verdict } = pendingLoop;
+				pendingLoop = undefined;
+				if (verdict.action === "stop") block(verdict.message);
+				else sendSteer(verdict.message);
+			};
 			const parse = (line: string) => {
 				try {
 					const raw = JSON.parse(line);
 					if (raw.type === "result" && Array.isArray(raw.permission_denials) && raw.permission_denials.length) denied = true;
 					if (raw.type === "result" && raw.is_error) providerError = true;
-					if (input.provider === "commandcode" && raw?.type === "event" && raw?.event?.type === "turn_start") {
-						state.usage.turns += 1;
+					if (raw.type === "response" && raw.command === "prompt" && raw.id === "start" && !promptAccepted) {
+						promptAccepted = raw.success === true;
+						if (!promptAccepted) {
+							providerError = true;
+							errorText = String(raw.error || "prompt failed");
+							closeRpcInput();
+						}
+					}
+					if (raw.type === "response" && raw.command === "steer") {
+						const steer = pendingSteers.get(raw.id);
+						if (steer) {
+							pendingSteers.delete(raw.id);
+							if (steer.source === "parent") {
+								fs.rmSync(steerFile, { force: true });
+								parentSteerPending = false;
+								state.steerError = raw.success === true ? null : "Pi rejected the steering request.";
+							}
+							if (raw.success === true) {
+								state.steers = Number(state.steers ?? 0) + 1;
+								state.activity = [...(state.activity ?? []), `steer: ${steer.preview}`].slice(-ACTIVITY);
+							}
+						}
+					}
+					if (raw.type === "agent_settled" && promptAccepted) closeRpcInput();
+					if (input.provider === "pi") {
+						if (raw.type === "delegate_turn_limit" && input.maxTurns > 0 && raw.turns === input.maxTurns) {
+							state.usage.turns = Math.max(state.usage.turns, raw.turns);
+							enforceBudget(true);
+							return;
+						}
+						if (raw.type === "turn_start") enforceBudget(true);
+						if (stopped && raw.type === "message_end" && raw.message?.errorMessage === "Delegate turn limit reached.") return;
+					}
+					if (input.provider === "claude" && raw.type === "result" && raw.subtype === "error_max_turns" && input.maxTurns > 0) {
+						state.usage.turns = Math.max(state.usage.turns, input.maxTurns);
+						enforceBudget(true);
+					}
+					if (input.provider === "codex" && raw.type === "turn.started") enforceBudget(true);
+					if (input.provider === "commandcode" && raw.type === "event" && raw.event?.type === "turn_start") {
+						enforceBudget(true);
+						if (!stopped) state.usage.turns += 1;
 					}
 					for (const event of provider.parse(raw)) {
+						trace.event(event);
 						if (event.kind === "cost") { state.costUsd = event.costUsd; state.usage.cost = event.costUsd; continue; }
 						if (event.kind === "info") { errorText = (errorText + event.text).slice(-4000); continue; }
+						if (event.kind !== "message") continue;
 						if (event.errorMessage || ["error", "aborted"].includes(event.stopReason || "")) { providerError = true; errorText = event.errorMessage || event.stopReason!; }
 						if (event.role !== "assistant") continue;
+						if (event.model) state.model = event.model;
 						for (const part of event.content) {
 							const line = activityLine(part);
 							if (line && line !== state.activity?.at(-1)) state.activity = [...(state.activity ?? []), line].slice(-ACTIVITY);
+							if (!stopped && part.type === "toolCall") {
+								const verdict = loop.observe(part.name, part.arguments, part.id);
+								if (verdict.action !== "none" && (!pendingLoop || (pendingLoop.verdict.action === "steer" && verdict.action === "stop"))) {
+									pendingLoop = { verdict, at: performance.now() + (scope.length ? 100 : 0) };
+								}
+							}
 						}
 						const text = event.content.filter((p: any) => p.type === "text").map((p: any) => p.text).join("\n");
 						if (text.trim()) output = text.slice(-8000);
@@ -549,8 +692,10 @@ export async function runWorker(id: string): Promise<void> {
 							if (event.usage.contextTokens) {
 								state.usage.contextTokens = Math.max(state.usage.contextTokens, event.usage.contextTokens);
 							}
+							enforceBudget();
 						}
 					}
+					checkLoop();
 				} catch { errorText = (errorText + line).slice(-4000); }
 			};
 			const watchRoots = scope.includes(".") ? ["."] : [...new Set(scope.map(rel => { try { return fs.statSync(path.join(input.cwd, rel)).isDirectory() ? rel : path.dirname(rel); } catch { return path.dirname(rel); } }))];
@@ -563,6 +708,8 @@ export async function runWorker(id: string): Promise<void> {
 				try {
 					if (fs.statSync(path.join(input.cwd, rel)).isDirectory()) return;
 				} catch {}
+				loop.progress();
+				pendingLoop = undefined;
 				const [other] = claimPaths(input.cwd, id, state.agent, [rel]);
 				if (!other || conflicted.has(rel)) return;
 				conflicted.add(rel);
@@ -580,7 +727,13 @@ export async function runWorker(id: string): Promise<void> {
 			}
 			child = spawn(wrapped.command, wrapped.args, { cwd: input.cwd, env: wrapped.env, detached: true, stdio: ["pipe", "pipe", "pipe"] });
 			child.stdin?.on("error", () => {});
-			child.stdin?.end();
+			if (provider.stdin === "rpc") {
+				try {
+					child.stdin?.write(JSON.stringify({ id: "start", type: "prompt", message: prompt }) + "\n");
+				} catch {}
+			} else {
+				child.stdin?.end();
+			}
 			lastOutputAt = Date.now();
 			lastTick = lastOutputAt;
 			state.childPid = child.pid;
@@ -619,9 +772,19 @@ export async function runWorker(id: string): Promise<void> {
 						state.pending = state.pending.filter((p: any) => p.id !== pending.id);
 						fs.renameSync(file, path.join(dir, `answered-${pending.id}.json`));
 					}
-					if (!stopped && Number(input.contextBudget ?? 0) > 0 && state.usage.contextTokens > Number(input.contextBudget)) {
-						errorText = `Context budget reached: the child carried ${state.usage.contextTokens} tokens in one request, above the budget of ${input.contextBudget}. Its changes stay in the project. Continue with a new child on the same scope after accept.`;
-						stop("blocked");
+					checkLoop();
+					if (!stopped && promptAccepted && !rpcClosed && !parentSteerPending && fs.existsSync(steerFile)) {
+						try {
+							const request = readJson(steerFile);
+							const text = typeof request?.message === "string" ? request.message.trim() : "";
+							if (text && text.length <= 8000) parentSteerPending = sendSteer(text, "parent");
+							if (!parentSteerPending) {
+								fs.rmSync(steerFile, { force: true });
+								state.steerError = "Could not send the steering request to Pi.";
+							}
+						} catch {
+							state.steerError = "Could not read the steering request.";
+						}
 					}
 					const now = Date.now();
 					if (state.pending.length) lastOutputAt = now;
@@ -640,9 +803,10 @@ export async function runWorker(id: string): Promise<void> {
 			const code = await new Promise<number>((resolve, reject) => { child!.once("error", reject); child!.once("close", (code, signal) => resolve(code ?? (signal ? 128 : 1))); });
 			closed = true;
 			if (buffer.trim()) parse(buffer);
+			closeRpcInput();
 			state.exitCode = code;
 			state.status = stopped || (code !== 0 || providerError ? "failed" : denied || /^BLOCKED\b/i.test(output.trim()) ? "blocked" : "completed");
-			state.summary = (state.status === "failed" || state.status === "blocked" ? errorText || output : output || errorText || state.status).slice(-4000);
+			state.summary = (guardStop || (state.status === "failed" || state.status === "blocked" ? errorText || output : output || errorText || state.status)).slice(-4000);
 		} else {
 			state.status = stopped;
 			state.summary = (errorText || `Stopped while queued: ${stopped}`).slice(-4000);
@@ -664,6 +828,7 @@ export async function runWorker(id: string): Promise<void> {
 			} catch {}
 		}
 		closeLog();
+		trace.close();
 		if (interval) clearInterval(interval);
 		for (const watcher of watchers) watcher.close();
 		if (closed && escalation) clearTimeout(escalation);

@@ -262,8 +262,11 @@ export function snapshot(cwd: string, scope: string[], id: string, name: string,
 		const realIndex = path.resolve(cwd, git(cwd, ["rev-parse", "--git-path", "index"]));
 		const head = tryGit(cwd, ["rev-parse", "--verify", "-q", "HEAD"]);
 		const env = { GIT_INDEX_FILE: index };
-		if (fs.existsSync(realIndex)) fs.copyFileSync(realIndex, index);
-		else if (head) git(cwd, ["read-tree", head], env);
+		if (fs.existsSync(realIndex)) {
+			const modified = Math.floor(fs.statSync(realIndex).mtimeMs) / 1000;
+			fs.copyFileSync(realIndex, index);
+			fs.utimesSync(index, modified, modified);
+		} else if (head) git(cwd, ["read-tree", head], env);
 		const present = scope.filter(rel => fs.existsSync(path.join(cwd, rel)));
 		if (present.length) {
 			git(cwd, ["add", "-A", "--", ...present], env);

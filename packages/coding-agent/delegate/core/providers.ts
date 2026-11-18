@@ -25,6 +25,8 @@ interface Provider {
 	id: ProviderId;
 	binary: string;
 	describe: string;
+	/** How the core starts the run and keeps talking to it: RPC keeps stdin open for steer. */
+	stdin?: "rpc";
 	build(opts: InvokeOptions): Invocation;
 	parse(event: unknown): ChildEvent[];
 }
@@ -127,18 +129,31 @@ function textOf(value: unknown): string {
 const piProvider: Provider = {
 	id: "pi",
 	binary: "pi",
-	describe: "pi CLI, NDJSON event stream",
+	describe: "pi CLI, RPC JSON event stream",
+	stdin: "rpc",
 	build(opts) {
-		const args = ["--mode", "json", "-p", "--no-mcp", "--no-extensions", "--no-session"];
+		// RPC keeps stdin open: the core sends the first prompt and later steer messages as
+		// JSON lines. The event stream is the same shape as JSON mode.
+		const args = ["--mode", "rpc", "--no-mcp", "--no-extensions", "--no-session"];
 		if (opts.model) args.push("--model", opts.model);
 		if (opts.tools && opts.tools.length > 0) args.push("--tools", opts.tools.join(","));
-		args.push(opts.prompt);
 		return getPiInvocation(args);
 	},
 	parse(event) {
 		const e = asRecord(event);
 		if (e.type === "message_end" && e.message) {
 			const msg = asRecord(e.message);
+			if (msg.role === "toolResult") {
+				return [
+					{
+						kind: "toolResult",
+						toolCallId: str(msg.toolCallId),
+						name: str(msg.toolName) ?? "tool",
+						content: textOf(msg.content),
+						isError: msg.isError === true,
+					},
+				];
+			}
 			const role = msg.role === "user" ? "user" : "assistant";
 			const content = Array.isArray(msg.content)
 				? msg.content
@@ -148,6 +163,7 @@ const piProvider: Provider = {
 							if (p.type === "toolCall") {
 								return {
 									type: "toolCall" as const,
+									id: str(p.id),
 									name: String(p.name || "unknown"),
 									arguments: asRecord(p.arguments),
 								};
@@ -183,9 +199,18 @@ const piProvider: Provider = {
 			return events;
 		}
 		if (e.type === "tool_result_end" && e.message) {
-			const text = textOf(asRecord(e.message).content);
+			const msg = asRecord(e.message);
+			const text = textOf(msg.content);
 			if (!text) return [];
-			return [{ kind: "message", role: "user", content: [{ type: "text", text }] }];
+			return [
+				{
+					kind: "toolResult",
+					toolCallId: str(msg.toolCallId),
+					name: str(msg.toolName) ?? "tool",
+					content: text,
+					isError: msg.isError === true,
+				},
+			];
 		}
 		return [];
 	},
@@ -225,6 +250,7 @@ const claudeProvider: Provider = {
 							if (p.type === "tool_use") {
 								return {
 									type: "toolCall" as const,
+									id: str(p.id),
 									name: String(p.name || "unknown"),
 									arguments: asRecord(p.input),
 								};
@@ -256,13 +282,28 @@ const claudeProvider: Provider = {
 		}
 		if (e.type === "user" && e.message) {
 			const msg = asRecord(e.message);
-			const text = textOf(
-				Array.isArray(msg.content)
-					? msg.content.map((part: any) => asRecord(part).content).filter(Boolean)
-					: msg.content,
-			);
-			if (!text) return [];
-			return [{ kind: "message", role: "user", content: [{ type: "text", text }] }];
+			if (!Array.isArray(msg.content)) {
+				const text = textOf(msg.content);
+				return text ? [{ kind: "message", role: "user", content: [{ type: "text", text }] }] : [];
+			}
+			const events: ChildEvent[] = [];
+			for (const raw of msg.content) {
+				const part = asRecord(raw);
+				if (part.type === "tool_result") {
+					events.push({
+						kind: "toolResult",
+						toolCallId: str(part.tool_use_id),
+						name: "tool",
+						content: textOf(part.content),
+						isError: part.is_error === true,
+					});
+				} else if (part.type === "text" && str(part.text)) {
+					events.push({ kind: "message", role: "user", content: [{ type: "text", text: String(part.text) }] });
+				}
+			}
+			if (events.length) return events;
+			const text = textOf(msg.content);
+			return text ? [{ kind: "message", role: "user", content: [{ type: "text", text }] }] : [];
 		}
 		if (e.type === "result") {
 			const events: ChildEvent[] = [];
@@ -295,15 +336,38 @@ const codexProvider: Provider = {
 		if (e.type === "item.completed" || e.type === "item.started") {
 			const item = asRecord(e.item);
 			const itemType = str(item.type) || "item";
+			const itemId = str(item.id);
 			if (itemType === "agent_message" && e.type === "item.completed") {
 				const text = str(item.text) || "";
 				if (!text) return [];
 				return [{ kind: "message", role: "assistant", content: [{ type: "text", text }] }];
 			}
 			if (itemType === "reasoning") return [];
+			if (e.type === "item.completed") {
+				const output =
+					itemType === "command_execution"
+						? (str(item.aggregated_output) ?? str(item.output) ?? "")
+						: textOf(item);
+				const exit = itemType === "command_execution" && typeof item.exit_code === "number" ? item.exit_code : 0;
+				return [
+					{
+						kind: "toolResult",
+						toolCallId: itemId,
+						name: itemType === "command_execution" ? "bash" : itemType,
+						content: output,
+						isError: exit !== 0,
+					},
+				];
+			}
 			const name = itemType === "command_execution" ? "bash" : itemType;
 			const args = itemType === "command_execution" ? { command: str(item.command) || "" } : item;
-			return [{ kind: "message", role: "assistant", content: [{ type: "toolCall", name, arguments: args }] }];
+			return [
+				{
+					kind: "message",
+					role: "assistant",
+					content: [{ type: "toolCall", id: itemId, name, arguments: args }],
+				},
+			];
 		}
 		if (e.type === "turn.completed") {
 			const usage = asRecord(e.usage);
@@ -392,7 +456,12 @@ const commandcodeProvider: Provider = {
 			if (innerType === "message_end" && Array.isArray(inner.content)) {
 				const content = inner.content.flatMap((part: any): Extract<ChildEvent, { kind: "message" }>["content"] =>
 					part?.type === "tool_use"
-						? [{ type: "toolCall" as const, name: str(part.name) || "tool", arguments: asRecord(part.input) }]
+						? [{
+								type: "toolCall" as const,
+								id: str(part.id),
+								name: str(part.name) || "tool",
+								arguments: asRecord(part.input),
+							}]
 						: part?.type === "text" && str(part.text)
 							? [{ type: "text" as const, text: String(part.text) }]
 							: [],

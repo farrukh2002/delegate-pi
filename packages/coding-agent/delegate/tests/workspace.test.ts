@@ -109,6 +109,29 @@ test("snapshot, diff and undo restore only the scope", () => {
 	assert.equal(git(dir, ["for-each-ref", "refs/delegate"]), "");
 });
 
+test("snapshots detect same-size edits made within the Git index timestamp", () => {
+	const dir = repo();
+	const id = "77777777-7777-4777-8777-777777777777";
+	const temp = tempDir();
+	const file = path.join(dir, "src/auth/login.ts");
+	const index = path.join(dir, ".git/index");
+	const stamp = 1_700_000_000;
+	git(dir, ["config", "core.trustctime", "false"]);
+	fs.utimesSync(file, stamp, stamp);
+	git(dir, ["add", "--", "src/auth/login.ts"]);
+	fs.utimesSync(index, stamp, stamp);
+	const before = fs.readFileSync(index);
+	snapshot(dir, ["src/auth"], id, "before", temp);
+
+	fs.writeFileSync(file, "login v2\n");
+	fs.utimesSync(file, stamp, stamp);
+	snapshot(dir, ["src/auth"], id, "after", temp);
+	assert.match(diff(dir, id, ["src/auth"]), /\+login v2/);
+	assert.deepEqual(undo(dir, id, ["src/auth"], temp, false), ["src/auth/login.ts"]);
+	assert.equal(fs.readFileSync(file, "utf8"), "login v1\n");
+	assert.deepEqual(fs.readFileSync(index), before);
+});
+
 test("undo from a subdirectory of the repository", () => {
 	const root = repo();
 	const dir = path.join(root, "src");
