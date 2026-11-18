@@ -6,8 +6,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { convertToPng, loadPngTranscoder } from "../src/utils/image-convert.ts";
-import { hasImageHelper } from "../src/utils/image-resize-native.ts";
 import { formatDimensionNote, resizeImage } from "../src/utils/image-resize.ts";
+import { hasImageHelper } from "../src/utils/image-resize-native.ts";
 
 const helperAvailable = hasImageHelper();
 
