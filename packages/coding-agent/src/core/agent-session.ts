@@ -3752,6 +3752,7 @@ export class AgentSession {
 					this._extensionShutdownHandler?.();
 				},
 				getContextUsage: () => this.getContextUsage(),
+				getCacheWarmingStatus: () => this.cacheWarmingStatus,
 				compact: (options) => {
 					void (async () => {
 						try {

@@ -12,11 +12,11 @@ import {
 } from "@earendil-works/pi-ai";
 import type { KeyId } from "@earendil-works/pi-tui";
 import { type Theme, theme } from "../../modes/interactive/theme/theme.ts";
-import type { CacheWarmingAction } from "../cache-warmer.ts";
+import type { CacheWarmingAction, CacheWarmingStatus } from "../cache-warmer.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import type { KeybindingsConfig } from "../keybindings.ts";
 import type { ModelRegistry } from "../model-registry.ts";
-import type { ScopedModel } from "../model-resolver.ts";
+import { findExactModelReferenceMatch, type ScopedModel } from "../model-resolver.ts";
 import type { SessionManager } from "../session-manager.ts";
 import {
 	type BuildSystemPromptOptions,
@@ -379,6 +379,7 @@ export class ExtensionRunner {
 	private abortFn: () => void = () => {};
 	private hasPendingMessagesFn: () => boolean = () => false;
 	private getContextUsageFn: () => ContextUsage | undefined = () => undefined;
+	private getCacheWarmingStatusFn: () => CacheWarmingStatus | undefined = () => undefined;
 	private compactFn: (options?: CompactOptions) => void = () => {};
 	private getSystemPromptFn: () => string = () => "";
 	private getSystemPromptOptionsFn: () => BuildSystemPromptOptions = () =>
@@ -458,6 +459,7 @@ export class ExtensionRunner {
 		this.hasPendingMessagesFn = contextActions.hasPendingMessages;
 		this.shutdownHandler = contextActions.shutdown;
 		this.getContextUsageFn = contextActions.getContextUsage;
+		this.getCacheWarmingStatusFn = contextActions.getCacheWarmingStatus ?? (() => undefined);
 		this.compactFn = contextActions.compact;
 		this.getSystemPromptFn = contextActions.getSystemPrompt;
 		this.getSystemPromptOptionsFn =
@@ -962,6 +964,10 @@ export class ExtensionRunner {
 				runner.assertActive();
 				return runner.getContextUsageFn();
 			},
+			get cacheWarmingStatus() {
+				runner.assertActive();
+				return runner.getCacheWarmingStatusFn();
+			},
 			compact: (options) => {
 				runner.assertActive();
 				runner.compactFn(options);
@@ -969,6 +975,39 @@ export class ExtensionRunner {
 			getSystemPrompt: () => {
 				runner.assertActive();
 				return runner.getSystemPromptFn();
+			},
+			complete: async (request) => {
+				runner.assertActive();
+				if (typeof request.prompt !== "string" || !request.prompt.trim()) {
+					throw new Error("A completion needs a nonempty prompt");
+				}
+				const model = request.model
+					? findExactModelReferenceMatch(request.model, runner.modelRegistry.getAll())
+					: getModel();
+				if (!model) {
+					throw new Error(request.model ? `Unknown model: ${request.model}` : "No model is selected");
+				}
+				const result = await runner.modelRegistry.complete(
+					model,
+					{
+						...(request.system ? { systemPrompt: request.system } : {}),
+						messages: [{ role: "user", content: request.prompt, timestamp: Date.now() }],
+					},
+					{
+						...(request.maxTokens ? { maxTokens: request.maxTokens } : {}),
+						...(request.signal ? { signal: request.signal } : {}),
+					},
+				);
+				if (result.stopReason === "aborted") {
+					request.signal?.throwIfAborted();
+					throw new Error(result.errorMessage || "Completion was aborted");
+				}
+				if (result.stopReason === "error") throw new Error(result.errorMessage || "Completion failed");
+				const text = result.content
+					.filter((part) => part.type === "text")
+					.map((part) => part.text)
+					.join("\n");
+				return { text, usage: result.usage, model: model.id, provider: model.provider };
 			},
 		};
 	}
