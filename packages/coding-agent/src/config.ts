@@ -442,6 +442,22 @@ export function getPackageDir(): string {
 	return findNodePackageDir(__dirname);
 }
 
+export function getWebEngineBinaryPath(): string | undefined {
+	if (process.platform !== "linux") return undefined;
+	const override = process.env.PI_WEB_BIN?.trim();
+	if (override) return resolve(expandTildePath(override));
+	if (process.arch !== "x64" && process.arch !== "arm64") return undefined;
+	const packageDir = getPackageDir();
+	const candidates = [`pi-web-${process.arch}`, "pi-web"].flatMap((name) => [
+		join(packageDir, "dist", "bin", name),
+		join(packageDir, "bin", name),
+		join(packageDir, name),
+		join(dirname(process.execPath), name),
+	]);
+	candidates.push(resolve(packageDir, "..", "web-rs", "target", "release", "pi-web"));
+	return candidates.find((candidate) => existsSync(candidate));
+}
+
 /**
  * Get path to built-in themes directory (shipped with package)
  * - For Bun binary: theme/ next to executable

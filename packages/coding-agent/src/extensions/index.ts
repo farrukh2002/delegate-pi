@@ -9,6 +9,7 @@ import mcpExtension from "./mcp/index.ts";
 import statsExtension from "./stats/index.ts";
 import toolSearchExtension from "./tool-search/index.ts";
 import usageExtension from "./usage/index.ts";
+import webExtension from "./web/index.ts";
 
 export const builtInExtensions: InlineExtension[] = [
 	{ name: "llama.cpp", factory: llamaExtension, builtin: true },
@@ -18,6 +19,7 @@ export const builtInExtensions: InlineExtension[] = [
 	{ name: "stats", factory: statsExtension, builtin: true },
 	{ name: "context-prune", factory: contextPruneExtension, builtin: true },
 	{ name: "jobs", factory: jobsExtension, builtin: true },
+	{ name: "web", factory: webExtension, builtin: true },
 	// Replaceable: an extension that registers `codemode`, `tool_search`, or `/mcp` (such as a third-party
 	// MCP extension) takes over instead of running alongside the built-in one.
 	{ name: "codemode", factory: codemodeExtension, replaceable: true, builtin: true },

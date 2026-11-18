@@ -22,10 +22,12 @@ if (!existsSync(join(agentDir, "dist", "bundle", "cli.js"))) {
 }
 
 for (const target of ["x64", "arm64"]) {
-	const helper = join(agentDir, "dist", "bin", `pi-image-resize-${target}`);
-	if (!existsSync(helper)) {
-		console.error(`dist/bin/pi-image-resize-${target} is missing. Run npm run build:native first.`);
-		process.exit(1);
+	for (const name of ["pi-image-resize", "pi-web"]) {
+		const helper = join(agentDir, "dist", "bin", `${name}-${target}`);
+		if (!existsSync(helper)) {
+			console.error(`dist/bin/${name}-${target} is missing. Run npm run build:native first.`);
+			process.exit(1);
+		}
 	}
 	const hook = join(agentDir, "delegate", "bin", `child-claude-${target}`);
 	if (!existsSync(hook)) {
@@ -53,7 +55,9 @@ for (const { path } of pack.files) {
 chmodSync(join(stage, "dist", "bundle", "cli.js"), 0o755);
 chmodSync(join(stage, "delegate", "core", "delegate.mjs"), 0o755);
 for (const target of ["x64", "arm64"]) {
-	chmodSync(join(stage, "dist", "bin", `pi-image-resize-${target}`), 0o755);
+	for (const name of ["pi-image-resize", "pi-web"]) {
+		chmodSync(join(stage, "dist", "bin", `${name}-${target}`), 0o755);
+	}
 	chmodSync(join(stage, "delegate", "bin", `delegate-worker-${target}`), 0o755);
 }
 
