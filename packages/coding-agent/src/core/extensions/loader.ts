@@ -16,7 +16,12 @@ import { canonicalizePath, pathsEqual, resolvePath } from "../../utils/paths.ts"
 import { createEventBus, type EventBus } from "../event-bus.ts";
 import type { ExecOptions } from "../exec.ts";
 import { execCommand } from "../exec.ts";
-import { type McpServerConfig, McpServerRegistry, validateMcpServerConfig } from "../mcp-servers.ts";
+import {
+	type McpServerConfig,
+	type McpServerControl,
+	McpServerRegistry,
+	validateMcpServerConfig,
+} from "../mcp-servers.ts";
 import { readPiManifest } from "../pi-manifest.ts";
 import { createSyntheticSourceInfo, getSyntheticPathSource, isSyntheticPath } from "../source-info.ts";
 import { time } from "../timings.ts";
@@ -515,6 +520,16 @@ function createExtensionAPI(
 		getMcpServers() {
 			assertActive();
 			return runtime.mcpServers.list();
+		},
+
+		registerMcpServerControl(handler: McpServerControl) {
+			assertActive();
+			applyRuntimeChange(() => runtime.mcpServers.setControl(handler));
+		},
+
+		setMcpServerEnabled(name: string, enabled: boolean) {
+			assertActive();
+			return state === "active" && runtime.mcpServers.setEnabled(name, enabled, runtime.createContext);
 		},
 
 		registerVirtualModel<TState>(model: ExtensionVirtualModel<TState>) {
