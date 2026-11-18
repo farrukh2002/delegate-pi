@@ -21,6 +21,7 @@ class FakeTransport implements DelegateTransport {
 	states = new Map<string, DelegateState>();
 	starts: DelegateRequest[][] = [];
 	answers: { taskId: string; requestId: string; value: DelegateAnswer }[] = [];
+	steers: { taskId: string; message: string }[] = [];
 	autoComplete = true;
 	private counter = 0;
 
@@ -64,6 +65,9 @@ class FakeTransport implements DelegateTransport {
 	}
 	async cancel(id: string): Promise<DelegateState> {
 		return this.complete(id, "cancelled");
+	}
+	async steer(taskId: string, message: string): Promise<void> {
+		this.steers.push({ taskId, message });
 	}
 	async diff(): Promise<string> {
 		return "diff body";
@@ -109,6 +113,7 @@ function managerFor(transport: FakeTransport, entries: SessionEntry[]): Delegate
 		sessionId: "session-a",
 		cwd: "/tmp/project",
 		branchEntries: () => entries,
+		sessionEntries: () => entries,
 		ui: { available: false, ask: async () => undefined, notify: () => {} },
 	});
 	return manager;
@@ -137,6 +142,7 @@ function makeHarness(): Harness {
 		sessionId: "session-a",
 		cwd: "/tmp/project",
 		branchEntries: () => entries,
+		sessionEntries: () => entries,
 		ui: { available: false, ask: async () => undefined, notify: () => {} },
 	};
 	const deps = { manager, hostFrom: () => host };
@@ -280,6 +286,20 @@ describe("delegate_tasks actions", () => {
 		expect((await run(h.tasks, h.ctx, { action: "undo", taskId: id })).content[0]!.text).toContain("src/a.ts");
 		expect((await run(h.tasks, h.ctx, { action: "accept", taskId: id })).content[0]!.text).toContain("Accepted");
 		expect((await run(h.tasks, h.ctx, { action: "prune" })).content[0]!.text).toContain("Removed 0");
+		h.manager.dispose();
+	});
+
+	it("reports that steering was queued and shows a later rejection in status", async () => {
+		const h = makeHarness();
+		h.transport.autoComplete = false;
+		const taskId = (await run(h.delegate, h.ctx, { agent: "worker", task: "x" })).details!.views![0]!.taskId;
+		const message = "Use another test runner.";
+		const queued = await run(h.tasks, h.ctx, { action: "steer", taskId, message });
+		expect(queued.content[0]!.text).toBe(`Steering queued for ${taskId}.`);
+		expect(h.transport.steers).toEqual([{ taskId, message }]);
+		h.transport.states.get(taskId)!.steerError = "Pi rejected the steering request.";
+		const status = await run(h.tasks, h.ctx, { action: "status", taskId });
+		expect(status.content[0]!.text).toContain("Pi rejected the steering request.");
 		h.manager.dispose();
 	});
 

@@ -1,3 +1,9 @@
+mod guard;
+mod pi_rpc;
+mod trace;
+
+use guard::{Budget, BudgetCheck, LoopAction, LoopGuard};
+use pi_rpc::PiRpc;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
@@ -11,6 +17,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use trace::TraceWriter;
 
 const LOG_CAP: usize = 2 * 1024 * 1024;
 const HEARTBEAT_MS: i64 = 5000;
@@ -105,7 +112,9 @@ fn compact_log_line(line: &str) -> Option<String> {
 	if line.len() <= 4096 {
 		return Some(line.to_string());
 	}
-	Some(format!("{}...[{} bytes]...{}", &line[..2048], line.len(), &line[line.len() - 2048..]))
+	let prefix_end = line.floor_char_boundary(2048);
+	let suffix_start = line.ceil_char_boundary(line.len() - 2048);
+	Some(format!("{}...[{} bytes]...{}", &line[..prefix_end], line.len(), &line[suffix_start..]))
 }
 
 struct Inner {
@@ -117,7 +126,12 @@ struct Inner {
 	activity: Vec<String>,
 	seen: HashMap<String, Value>,
 	stop: Option<String>,
+	guard_stop: Option<String>,
+	budget: Budget,
+	loop_guard: LoopGuard,
 	child: Option<u32>,
+	pi_rpc: Option<PiRpc>,
+	trace: Option<TraceWriter>,
 	log_partial: String,
 	parse_buffer: String,
 	log_bytes: usize,
@@ -155,9 +169,48 @@ impl Inner {
 		}
 		self.stop = Some(reason.to_string());
 		if let Some(pid) = self.child {
+			self.stopped_at = Some(now_ms());
 			unsafe {
 				libc::kill(-(pid as i32), libc::SIGTERM);
 			}
+		}
+	}
+
+	fn block(&mut self, reason: String) {
+		if self.stop.is_none() {
+			self.guard_stop = Some(reason);
+			self.stop("blocked");
+		}
+	}
+
+	fn check_budget(&mut self, starting_next: bool) {
+		if self.stop.is_some() {
+			return;
+		}
+		match self.budget.check(
+			self.usage("turns"), self.usage("contextTokens"), starting_next, self.state["budgetNotice"].is_string(),
+		) {
+			BudgetCheck::Notice(notice) => {
+				self.state["budgetNotice"] = json!(notice);
+				self.save();
+			}
+			BudgetCheck::Stop(reason) => self.block(reason),
+			BudgetCheck::Clear => {}
+		}
+	}
+
+	fn check_loop(&mut self) {
+		if self.stop.is_some() {
+			return;
+		}
+		match self.loop_guard.take_action() {
+			Some(LoopAction::Stop(reason)) => self.block(reason),
+			Some(LoopAction::Steer(message)) => {
+				if let Some(rpc) = self.pi_rpc.as_mut() {
+					rpc.send_guard(&message);
+				}
+			}
+			None => {}
 		}
 	}
 
@@ -223,7 +276,7 @@ impl Inner {
 		self.state["activity"] = json!(self.activity);
 	}
 
-	fn usage(&mut self, key: &str) -> f64 {
+	fn usage(&self, key: &str) -> f64 {
 		self.state["usage"][key].as_f64().unwrap_or(0.0)
 	}
 
@@ -236,7 +289,7 @@ type Shared = Arc<Mutex<Inner>>;
 
 enum Part {
 	Text(String),
-	Tool { name: String, arguments: Value },
+	Tool { id: Option<String>, name: String, arguments: Value },
 }
 
 struct Delta {
@@ -254,8 +307,16 @@ enum Event {
 		assistant: bool,
 		content: Vec<Part>,
 		usage: Option<Delta>,
+		model: Option<String>,
 		stop_reason: Option<String>,
 		error_message: Option<String>,
+	},
+	ToolResult {
+		id: Option<String>,
+		name: String,
+		content: String,
+		is_error: bool,
+		activity: Option<String>,
 	},
 	Cost(f64),
 	Info(String),
@@ -263,7 +324,7 @@ enum Event {
 
 fn activity_line(part: &Part) -> Option<String> {
 	match part {
-		Part::Tool { name, arguments } => {
+		Part::Tool { name, arguments, .. } => {
 			let keys = ["path", "file_path", "filePath", "command", "cmd", "pattern", "query", "url"];
 			let mut target: Option<String> = None;
 			for key in keys {
@@ -321,6 +382,7 @@ fn text_of(value: &Value) -> String {
 					None
 				}
 			})
+			.filter(|text| !text.is_empty())
 			.collect::<Vec<_>>()
 			.join("\n"),
 		Value::Object(map) => map
@@ -332,22 +394,41 @@ fn text_of(value: &Value) -> String {
 	}
 }
 
-fn message(id: Option<String>, content: Vec<Part>) -> Event {
+fn tool_arguments(value: &Value) -> Value {
+	if value.is_object() || value.is_array() { value.clone() } else { json!({}) }
+}
+
+fn message(assistant: bool, content: Vec<Part>) -> Event {
 	Event::Message {
-		id,
-		assistant: true,
+		id: None,
+		assistant,
 		content,
 		usage: None,
+		model: None,
 		stop_reason: None,
 		error_message: None,
 	}
 }
 
 fn parse_pi(raw: &Value) -> Vec<Event> {
-	if raw["type"].as_str() != Some("message_end") {
+	let msg = &raw["message"];
+	let event = raw["type"].as_str();
+	if event == Some("tool_result_end") || (event == Some("message_end") && msg["role"] == "toolResult") {
+		let content = text_of(&msg["content"]);
+		if event == Some("tool_result_end") && content.is_empty() {
+			return Vec::new();
+		}
+		return vec![Event::ToolResult {
+			id: str_of(&msg["toolCallId"]),
+			name: str_of(&msg["toolName"]).unwrap_or_else(|| "tool".to_string()),
+			content,
+			is_error: msg["isError"] == true,
+			activity: None,
+		}];
+	}
+	if event != Some("message_end") {
 		return Vec::new();
 	}
-	let msg = &raw["message"];
 	let assistant = msg["role"].as_str() != Some("user");
 	let mut content: Vec<Part> = Vec::new();
 	if let Some(parts) = msg["content"].as_array() {
@@ -359,8 +440,9 @@ fn parse_pi(raw: &Value) -> Vec<Event> {
 					}
 				}
 				Some("toolCall") => content.push(Part::Tool {
+					id: str_of(&part["id"]),
 					name: part["name"].as_str().unwrap_or("unknown").to_string(),
-					arguments: part["arguments"].clone(),
+					arguments: tool_arguments(&part["arguments"]),
 				}),
 				_ => {}
 			}
@@ -384,6 +466,7 @@ fn parse_pi(raw: &Value) -> Vec<Event> {
 		assistant,
 		content,
 		usage,
+		model: str_of(&msg["model"]),
 		stop_reason: str_of(&msg["stopReason"]),
 		error_message: str_of(&msg["errorMessage"]),
 	}]
@@ -403,8 +486,9 @@ fn parse_claude(raw: &Value) -> Vec<Event> {
 							}
 						}
 						Some("tool_use") => content.push(Part::Tool {
+							id: str_of(&part["id"]),
 							name: part["name"].as_str().unwrap_or("unknown").to_string(),
-							arguments: part["input"].clone(),
+							arguments: tool_arguments(&part["input"]),
 						}),
 						_ => {}
 					}
@@ -426,9 +510,40 @@ fn parse_claude(raw: &Value) -> Vec<Event> {
 					cost: 0.0,
 					context: input + cached + created,
 				}),
+				model: str_of(&msg["model"]),
 				stop_reason: str_of(&msg["stop_reason"]),
 				error_message: None,
 			}]
+		}
+		Some("user") => {
+			let content = &raw["message"]["content"];
+			let mut events = Vec::new();
+			if let Some(parts) = content.as_array() {
+				for part in parts {
+					match part["type"].as_str() {
+						Some("tool_result") => events.push(Event::ToolResult {
+							id: str_of(&part["tool_use_id"]),
+							name: "tool".to_string(),
+							content: text_of(&part["content"]),
+							is_error: part["is_error"] == true,
+							activity: None,
+						}),
+						Some("text") => {
+							if let Some(text) = str_of(&part["text"]) {
+								events.push(message(false, vec![Part::Text(text)]));
+							}
+						}
+						_ => {}
+					}
+				}
+			}
+			if events.is_empty() {
+				let text = text_of(content);
+				if !text.is_empty() {
+					events.push(message(false, vec![Part::Text(text)]));
+				}
+			}
+			events
 		}
 		Some("result") => {
 			let mut events: Vec<Event> = Vec::new();
@@ -462,18 +577,35 @@ fn parse_codex(raw: &Value) -> Vec<Event> {
 				if text.is_empty() {
 					return Vec::new();
 				}
-				return vec![message(None, vec![Part::Text(text.to_string())])];
+				return vec![message(true, vec![Part::Text(text.to_string())])];
 			}
 			if item_type == "reasoning" {
 				return Vec::new();
 			}
-			let name = if item_type == "command_execution" { "bash".to_string() } else { item_type.to_string() };
-			let arguments = if item_type == "command_execution" {
+			let is_command = item_type == "command_execution";
+			let name = if is_command { "bash".to_string() } else { item_type.to_string() };
+			let id = str_of(&item["id"]);
+			let arguments = if is_command {
 				json!({ "command": item["command"].as_str().unwrap_or("") })
 			} else {
 				item.clone()
 			};
-			vec![message(None, vec![Part::Tool { name, arguments }])]
+			if raw["type"] == "item.completed" {
+				let content = if is_command {
+					str_of(&item["aggregated_output"])
+						.or_else(|| str_of(&item["output"]))
+						.unwrap_or_default()
+				} else {
+					text_of(item)
+				};
+				let activity = activity_line(&Part::Tool { id: None, name: name.clone(), arguments });
+				return vec![Event::ToolResult {
+					id, name, content,
+					is_error: is_command && num_of(&item["exit_code"]) != 0.0,
+					activity,
+				}];
+			}
+			vec![message(true, vec![Part::Tool { id, name, arguments }])]
 		}
 		Some("turn.completed") => {
 			let usage = &raw["usage"];
@@ -491,6 +623,7 @@ fn parse_codex(raw: &Value) -> Vec<Event> {
 					cost: 0.0,
 					context: input,
 				}),
+				model: None,
 				stop_reason: None,
 				error_message: None,
 			}]
@@ -504,6 +637,7 @@ fn parse_codex(raw: &Value) -> Vec<Event> {
 				assistant: true,
 				content: Vec::new(),
 				usage: None,
+				model: None,
 				stop_reason: Some("error".to_string()),
 				error_message: Some(text),
 			}]
@@ -518,7 +652,7 @@ fn parse_commandcode(raw: &Value) -> Vec<Event> {
 			let text = raw["finalText"].as_str().unwrap_or("").to_string();
 			let mut events: Vec<Event> = Vec::new();
 			if !text.is_empty() {
-				events.push(message(None, vec![Part::Text(text.clone())]));
+				events.push(message(true, vec![Part::Text(text.clone())]));
 			}
 			let failed = raw["subtype"].as_str() == Some("error");
 			events.push(Event::Message {
@@ -526,6 +660,7 @@ fn parse_commandcode(raw: &Value) -> Vec<Event> {
 				assistant: true,
 				content: Vec::new(),
 				usage: None,
+				model: None,
 				stop_reason: if failed { Some("error".to_string()) } else { None },
 				error_message: if failed {
 					Some(if text.is_empty() { "commandcode error".to_string() } else { text })
@@ -555,6 +690,7 @@ fn parse_commandcode(raw: &Value) -> Vec<Event> {
 							cost: 0.0,
 							context: total,
 						}),
+						model: None,
 						stop_reason: None,
 						error_message: None,
 					}]
@@ -565,8 +701,9 @@ fn parse_commandcode(raw: &Value) -> Vec<Event> {
 					for part in parts {
 						match part["type"].as_str() {
 							Some("tool_use") => content.push(Part::Tool {
+								id: str_of(&part["id"]),
 								name: part["name"].as_str().unwrap_or("tool").to_string(),
-								arguments: part["input"].clone(),
+								arguments: tool_arguments(&part["input"]),
 							}),
 							Some("text") => {
 								if let Some(text) = part["text"].as_str() {
@@ -579,7 +716,7 @@ fn parse_commandcode(raw: &Value) -> Vec<Event> {
 					if content.is_empty() {
 						Vec::new()
 					} else {
-						vec![message(None, content)]
+						vec![message(true, content)]
 					}
 				}
 				Some("run_error") | Some("error") => {
@@ -589,6 +726,7 @@ fn parse_commandcode(raw: &Value) -> Vec<Event> {
 						assistant: true,
 						content: Vec::new(),
 						usage: None,
+						model: None,
 						stop_reason: Some("error".to_string()),
 						error_message: Some(text),
 					}]
@@ -598,7 +736,7 @@ fn parse_commandcode(raw: &Value) -> Vec<Event> {
 					if text.is_empty() {
 						Vec::new()
 					} else {
-						vec![message(None, vec![Part::Text(text)])]
+						vec![message(true, vec![Part::Text(text)])]
 					}
 				}
 				_ => Vec::new(),
@@ -618,13 +756,21 @@ fn parse_events(provider: &str, raw: &Value) -> Vec<Event> {
 }
 
 fn apply_event(inner: &mut Inner, event: Event, provider: &str) {
+	if let Some(trace) = inner.trace.as_mut() {
+		trace.event(&event, inner.state["model"].as_str());
+	}
 	match event {
 		Event::Cost(cost) => {
 			inner.state["costUsd"] = json!(cost);
 			inner.set_usage("cost", cost);
 		}
 		Event::Info(text) => inner.push_error(&text),
-		Event::Message { id, assistant, content, usage, stop_reason, error_message } => {
+		Event::ToolResult { activity, .. } => {
+			if let Some(line) = activity {
+				inner.push_activity(line);
+			}
+		}
+		Event::Message { id, assistant, content, usage, model, stop_reason, error_message } => {
 			if error_message.is_some() || matches!(stop_reason.as_deref(), Some("error") | Some("aborted")) {
 				inner.provider_error = true;
 				inner.errors = error_message.or(stop_reason).unwrap_or_default();
@@ -632,9 +778,17 @@ fn apply_event(inner: &mut Inner, event: Event, provider: &str) {
 			if !assistant {
 				return;
 			}
+			if let Some(model) = model {
+				inner.state["model"] = json!(model);
+			}
 			for part in &content {
 				if let Some(line) = activity_line(part) {
 					inner.push_activity(line);
+				}
+				if inner.stop.is_none() {
+					if let Part::Tool { id, name, arguments } = part {
+						inner.loop_guard.observe(id.as_deref(), name, arguments);
+					}
 				}
 			}
 			let text: Vec<String> = content
@@ -691,7 +845,34 @@ fn parse_line(inner: &mut Inner, line: &str, provider: &str) {
 			return;
 		}
 	};
+	if let Some(rpc) = inner.pi_rpc.as_mut() {
+		match rpc.receive(&raw, &inner.dir, &mut inner.state) {
+			Some(Err(error)) => {
+				inner.provider_error = true;
+				inner.push_error(&error);
+			}
+			Some(Ok(activity)) => inner.push_activity(activity),
+			None => {}
+		}
+	}
+	if provider == "pi" {
+		if raw["type"] == "delegate_turn_limit" && inner.budget.max_turns > 0.0 && num_of(&raw["turns"]) == inner.budget.max_turns {
+			inner.set_usage("turns", inner.usage("turns").max(inner.budget.max_turns));
+			inner.check_budget(true);
+			return;
+		}
+		if raw["type"] == "turn_start" {
+			inner.check_budget(true);
+		}
+		if inner.stop.is_some() && raw["type"] == "message_end" && raw["message"]["errorMessage"] == "Delegate turn limit reached." {
+			return;
+		}
+	}
 	if raw["type"].as_str() == Some("result") {
+		if provider == "claude" && raw["subtype"] == "error_max_turns" && inner.budget.max_turns > 0.0 {
+			inner.set_usage("turns", inner.usage("turns").max(inner.budget.max_turns));
+			inner.check_budget(true);
+		}
 		if raw["permission_denials"].as_array().map(|items| !items.is_empty()).unwrap_or(false) {
 			inner.denied = true;
 		}
@@ -699,13 +880,20 @@ fn parse_line(inner: &mut Inner, line: &str, provider: &str) {
 			inner.provider_error = true;
 		}
 	}
-	if provider == "commandcode" && raw["type"].as_str() == Some("event") && raw["event"]["type"].as_str() == Some("turn_start") {
-		let turns = inner.usage("turns") + 1.0;
-		inner.set_usage("turns", turns);
+	if provider == "codex" && raw["type"] == "turn.started" {
+		inner.check_budget(true);
+	}
+	if provider == "commandcode" && raw["type"] == "event" && raw["event"]["type"] == "turn_start" {
+		inner.check_budget(true);
+		if inner.stop.is_none() {
+			inner.set_usage("turns", inner.usage("turns") + 1.0);
+		}
 	}
 	for event in parse_events(provider, &raw) {
 		apply_event(inner, event, provider);
 	}
+	inner.check_budget(false);
+	inner.check_loop();
 }
 
 fn instruction(scope: &[String]) -> String {
@@ -1048,6 +1236,7 @@ fn tool_mount(file: &Path) -> Option<PathBuf> {
 struct Invocation {
 	command: PathBuf,
 	args: Vec<String>,
+	rpc_prompt: Option<String>,
 }
 
 fn pi_entry() -> Option<String> {
@@ -1064,41 +1253,23 @@ fn build_invocation(request: &Value, scope: &[String]) -> Result<Invocation, Str
 	let prompt = format!("{system_prompt}\n\n{}\n\nTask: {task}", instruction(scope));
 	let model = request["model"].as_str().map(|value| value.to_string());
 	if provider == "pi" {
-		let mut args: Vec<String> = Vec::new();
-		if let Some(entry) = pi_entry() {
-			let node = resolve_on_path("node").ok_or_else(|| "node is missing from PATH".to_string())?;
-			args.push(entry);
-			args.push("--extension".to_string());
-			args.push("/delegate/child-pi.ts".to_string());
-			let mut tail_args = vec!["--mode".to_string(), "json".to_string(), "-p".to_string()];
-			tail_args.extend(["--no-mcp", "--no-extensions", "--no-session"].iter().map(|item| item.to_string()));
-			if let Some(model) = model.as_ref() {
-				tail_args.push("--model".to_string());
-				tail_args.push(model.clone());
-			}
-			if let Some(tools) = request["tools"].as_array() {
-				let list: Vec<String> = tools.iter().filter_map(|item| item.as_str().map(|value| value.to_string())).collect();
-				if !list.is_empty() {
-					tail_args.push("--tools".to_string());
-					tail_args.push(list.join(","));
-				}
-			}
-			tail_args.push(prompt);
-			args.extend(tail_args);
-			return Ok(Invocation { command: node, args });
-		}
-		let node = resolve_on_path("pi").ok_or_else(|| "Required executable is missing: pi".to_string())?;
-		args.extend(
-			["--mode", "json", "-p", "--no-mcp", "--no-extensions", "--no-session"]
-				.iter()
-				.map(|item| item.to_string()),
-		);
+		let (binary, mut args) = if let Some(entry) = pi_entry() {
+			("node", vec![entry, "--extension".to_string(), "/delegate/child-pi.ts".to_string()])
+		} else {
+			("pi", Vec::new())
+		};
+		let command = resolve_on_path(binary).ok_or_else(|| format!("Required executable is missing: {binary}"))?;
+		args.extend(args_of(&["--mode", "rpc", "--no-mcp", "--no-extensions", "--no-session"]));
 		if let Some(model) = model {
-			args.push("--model".to_string());
-			args.push(model);
+			args.extend(["--model".to_string(), model]);
 		}
-		args.push(prompt);
-		return Ok(Invocation { command: node, args });
+		if let Some(tools) = request["tools"].as_array() {
+			let list: Vec<_> = tools.iter().filter_map(Value::as_str).collect();
+			if !list.is_empty() {
+				args.extend(["--tools".to_string(), list.join(",")]);
+			}
+		}
+		return Ok(Invocation { command, args, rpc_prompt: Some(prompt) });
 	}
 	let binary = if provider == "claude" {
 		"claude"
@@ -1139,7 +1310,7 @@ fn build_invocation(request: &Value, scope: &[String]) -> Result<Invocation, Str
 				args.push(list.join(","));
 			}
 		}
-		if let Some(max_turns) = request["maxTurns"].as_i64() {
+		if let Some(max_turns) = request["maxTurns"].as_u64().filter(|limit| *limit > 0) {
 			args.push("--max-turns".to_string());
 			args.push(max_turns.to_string());
 		}
@@ -1175,7 +1346,7 @@ fn build_invocation(request: &Value, scope: &[String]) -> Result<Invocation, Str
 			.iter()
 			.map(|item| item.to_string()),
 		);
-		if let Some(max_turns) = request["maxTurns"].as_i64() {
+		if let Some(max_turns) = request["maxTurns"].as_u64().filter(|limit| *limit > 0) {
 			args.push("--max-turns".to_string());
 			args.push(max_turns.to_string());
 		}
@@ -1185,7 +1356,7 @@ fn build_invocation(request: &Value, scope: &[String]) -> Result<Invocation, Str
 		}
 	}
 	args.push(prompt);
-	Ok(Invocation { command, args })
+	Ok(Invocation { command, args, rpc_prompt: None })
 }
 
 fn provider_keys(provider: &str) -> Vec<String> {
@@ -1495,7 +1666,9 @@ fn snapshot(cwd: &Path, scope: &[String], id: &str, name: &str, temp_dir: &Path)
 		let head = try_git(cwd, &args_of(&["rev-parse", "--verify", "-q", "HEAD"]));
 		let env = vec![("GIT_INDEX_FILE", index.display().to_string())];
 		if real_index.exists() {
+			let modified = fs::metadata(&real_index).and_then(|stat| stat.modified()).map_err(|error| error.to_string())?;
 			fs::copy(&real_index, &index).map_err(|error| error.to_string())?;
+			File::open(&index).and_then(|copy| copy.set_modified(modified)).map_err(|error| error.to_string())?;
 		} else if let Some(head) = head.as_ref() {
 			git_run(cwd, &["read-tree".to_string(), head.clone()], &env, None)?;
 		}
@@ -2241,10 +2414,10 @@ fn watch_change(shared: &Shared, cwd: &Path, scope: &[String], task_id: &str, re
 	if cwd.join(rel).is_dir() {
 		return;
 	}
-	let agent = shared
-		.lock()
-		.map(|inner| inner.state["agent"].as_str().unwrap_or("direct").to_string())
-		.unwrap_or_else(|_| "direct".to_string());
+	let Ok(mut inner) = shared.lock() else { return };
+	inner.loop_guard.progress();
+	let agent = inner.state["agent"].as_str().unwrap_or("direct").to_string();
+	drop(inner);
 	let denied = claim_paths(cwd, task_id, &agent, &[rel.to_string()]);
 	let Some(first) = denied.first() else { return };
 	if conflicted.contains(rel) {
@@ -2328,6 +2501,7 @@ struct Sandbox {
 	command: PathBuf,
 	args: Vec<String>,
 	env: Vec<(String, String)>,
+	rpc_prompt: Option<String>,
 }
 
 fn sandbox_invocation(invocation: Invocation, request: &Value, task_dir: &Path, layout: &Layout, git: &GitMounts, scratch: &[String]) -> Result<Sandbox, String> {
@@ -2475,6 +2649,9 @@ fn sandbox_invocation(invocation: Invocation, request: &Value, task_dir: &Path, 
 		("GIT_CONFIG_NOSYSTEM".to_string(), "1".to_string()),
 	];
 	if provider == "pi" {
+		if let Some(max_turns) = request["maxTurns"].as_u64().filter(|limit| *limit > 0) {
+			env.push(("DELEGATE_MAX_TURNS".to_string(), max_turns.to_string()));
+		}
 		env.push((
 			"DELEGATE_PI_CODING_AGENT_DIR".to_string(),
 			home.join(&config).join("agent").display().to_string(),
@@ -2489,7 +2666,7 @@ fn sandbox_invocation(invocation: Invocation, request: &Value, task_dir: &Path, 
 	final_args.push("--".to_string());
 	final_args.push(invocation.command.display().to_string());
 	final_args.extend(child_args);
-	Ok(Sandbox { command: bwrap, args: final_args, env })
+	Ok(Sandbox { command: bwrap, args: final_args, env, rpc_prompt: invocation.rpc_prompt })
 }
 
 fn spawn_child(sandbox: &Sandbox, project: &Path) -> std::io::Result<Child> {
@@ -2500,7 +2677,7 @@ fn spawn_child(sandbox: &Sandbox, project: &Path) -> std::io::Result<Child> {
 	for (key, value) in &sandbox.env {
 		command.env(key, value);
 	}
-	command.stdin(Stdio::null());
+	command.stdin(if sandbox.rpc_prompt.is_some() { Stdio::piped() } else { Stdio::null() });
 	command.stdout(Stdio::piped());
 	command.stderr(Stdio::piped());
 	unsafe {
@@ -2512,7 +2689,7 @@ fn spawn_child(sandbox: &Sandbox, project: &Path) -> std::io::Result<Child> {
 	command.spawn()
 }
 
-fn tick(shared: &Shared, timeout_ms: i64, no_progress_ms: i64, budget: f64) {
+fn tick(shared: &Shared, timeout_ms: i64, no_progress_ms: i64) {
 	let mut inner = match shared.lock() {
 		Ok(guard) => guard,
 		Err(_) => return,
@@ -2523,10 +2700,12 @@ fn tick(shared: &Shared, timeout_ms: i64, no_progress_ms: i64, budget: f64) {
 	if inner.dir.join("cancel.json").exists() {
 		inner.stop("cancelled");
 	}
-	if inner.stop.is_none() && budget > 0.0 && inner.usage("contextTokens") > budget {
-		let tokens = inner.usage("contextTokens");
-		inner.errors = format!("Context budget reached: the child carried {tokens} tokens in one request, above the budget of {budget}. Its changes stay in the project. Continue with a new child on the same scope after accept.");
-		inner.stop("blocked");
+	inner.check_loop();
+	if inner.stop.is_none() {
+		let inner = &mut *inner;
+		if let Some(rpc) = inner.pi_rpc.as_mut() {
+			rpc.send_pending(&inner.dir, &mut inner.state);
+		}
 	}
 	let now = now_ms();
 	let waiting = inner.state["pending"].as_array().map(|items| !items.is_empty()).unwrap_or(false);
@@ -2605,7 +2784,14 @@ fn finalize_queued(
 fn run(id: &str) -> Result<(), String> {
 	let dir = data_dir().join("tasks").join(id);
 	let request = read_json(&dir.join("request.json"))?;
-	let state = read_json(&dir.join("state.json"))?;
+	let mut state = read_json(&dir.join("state.json"))?;
+	let trace_path = dir.join("trace.jsonl");
+	let trace = TraceWriter::open(&trace_path, request["task"].as_str().unwrap_or(""));
+	if trace.is_some() {
+		state["tracePath"] = json!(trace_path);
+	} else if let Some(fields) = state.as_object_mut() {
+		fields.remove("tracePath");
+	}
 	let shared: Shared = Arc::new(Mutex::new(Inner {
 		dir: dir.clone(),
 		state,
@@ -2615,7 +2801,12 @@ fn run(id: &str) -> Result<(), String> {
 		activity: Vec::new(),
 		seen: HashMap::new(),
 		stop: None,
+		guard_stop: None,
+		budget: Budget::new(&request),
+		loop_guard: LoopGuard::new(request["scope"].as_array().is_some_and(|items| !items.is_empty())),
 		child: None,
+		pi_rpc: None,
+		trace,
 		log_partial: String::new(),
 		parse_buffer: String::new(),
 		log_bytes: 0,
@@ -2650,7 +2841,6 @@ fn run(id: &str) -> Result<(), String> {
 		.as_i64()
 		.or_else(|| std::env::var("DELEGATE_NO_PROGRESS_MS").ok().and_then(|value| value.parse().ok()))
 		.unwrap_or(600_000);
-	let budget = request["contextBudget"].as_f64().unwrap_or(0.0);
 	let project = PathBuf::from(request["cwd"].as_str().unwrap_or(""));
 	let layout = scope_layout(&project, &scope);
 	let git = git_mounts(&project);
@@ -2776,6 +2966,9 @@ fn run(id: &str) -> Result<(), String> {
 		{
 			let mut inner = shared.lock().unwrap();
 			inner.child = Some(pid);
+			if let (Some(stdin), Some(prompt)) = (child.stdin.take(), sandbox.rpc_prompt) {
+				inner.pi_rpc = Some(PiRpc::start(stdin, prompt));
+			}
 			inner.state["childPid"] = json!(pid);
 			inner.last_output = now_ms();
 			inner.last_tick = now_ms();
@@ -2803,7 +2996,7 @@ fn run(id: &str) -> Result<(), String> {
 				if done.load(Ordering::SeqCst) {
 					break;
 				}
-				tick(&shared, timeout_ms, no_progress_ms, budget);
+				tick(&shared, timeout_ms, no_progress_ms);
 			});
 		}
 		let stdout = child.stdout.take().ok_or_else(|| "no child stdout".to_string())?;
@@ -2836,16 +3029,24 @@ fn run(id: &str) -> Result<(), String> {
 				parse_line(&mut inner, &line, &provider);
 			}
 		}
+		{
+			let mut guard = shared.lock().unwrap();
+			let inner = &mut *guard;
+			let pending = std::mem::take(&mut inner.parse_buffer);
+			if !pending.trim().is_empty() {
+				parse_line(inner, &pending, &provider);
+			}
+			if let Some(rpc) = inner.pi_rpc.as_mut() {
+				rpc.close(&inner.dir, &mut inner.state);
+			}
+			inner.trace = None;
+		}
 		let status = child.wait().map_err(|error| error.to_string())?;
 		let code = match status.code() {
 			Some(code) => code,
 			None => 128,
 		};
 		let mut inner = shared.lock().unwrap();
-		let pending = std::mem::take(&mut inner.parse_buffer);
-		if !pending.trim().is_empty() {
-			parse_line(&mut inner, &pending, &provider);
-		}
 		inner.state["exitCode"] = json!(code);
 		let blocked = inner.denied || inner.output.trim_start().to_lowercase().starts_with("blocked");
 		let reason = inner.stop.clone();
@@ -2855,7 +3056,9 @@ fn run(id: &str) -> Result<(), String> {
 			None if blocked => "blocked".to_string(),
 			None => "completed".to_string(),
 		};
-		let summary = if final_status == "failed" || final_status == "blocked" {
+		let summary = if let Some(reason) = &inner.guard_stop {
+			reason.clone()
+		} else if final_status == "failed" || final_status == "blocked" {
 			if !inner.errors.is_empty() {
 				inner.errors.clone()
 			} else {

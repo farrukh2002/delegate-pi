@@ -58,6 +58,7 @@ function hostFromContext(ctx: ExtensionContext): DelegateHost {
 		cwd: ctx.cwd,
 		sessionId: ctx.sessionManager.getSessionId(),
 		branchEntries: () => ctx.sessionManager.getBranch(),
+		sessionEntries: () => ctx.sessionManager.getEntries(),
 		ui: uiFromContext(ctx),
 	};
 }
@@ -181,6 +182,7 @@ export function createDelegateExtension(options: DelegateExtensionOptions = {}):
 			new DelegateManager({
 				transport,
 				appendEntry: (customType, data) => pi.appendEntry(customType, data),
+				appendUsage: (kind, provider, model, usage, note) => pi.appendUsage(kind, provider, model, usage, note),
 				now: options.now,
 				intervalMs: options.intervalMs,
 				requestRender: syncBand,

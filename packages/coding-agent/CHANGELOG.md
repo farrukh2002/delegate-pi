@@ -125,6 +125,9 @@
 - Added `deepseek-v4.1-flash` and `deepseek-v4.1-flash-1017` to the Qwen Token Plan Individual providers, and per-plan key variables `QWEN_TOKEN_PLAN_TEAM_API_KEY`, `QWEN_TOKEN_PLAN_TEAM_CN_API_KEY`, `QWEN_TOKEN_PLAN_INDIVIDUAL_API_KEY`, and `QWEN_TOKEN_PLAN_INDIVIDUAL_CN_API_KEY`; the shared `QWEN_TOKEN_PLAN_API_KEY` and `QWEN_TOKEN_PLAN_CN_API_KEY` still work ([#11773](https://github.com/earendil-works/pi/issues/11773))
 - Added a transcript notice when OpenAI drops reasoning items from a request, such as `OpenAI dropped 2 reasoning items: prefix_mismatch (details in session)` after compaction on GPT-6.2. Like the Anthropic thinking notice, it is shown when `showCacheMissNotices` is on and only when more items are dropped than in the previous response. Both notices now name the reasons
 - Added the Linux [native web tools](docs/web-engine.md) for HTTP requests, web search, page retrieval, and Git indexing, search, and reads. Git reads can resume within long UTF-8 lines. Rebuild any version 1 Git index before use.
+- Added normalized `trace.jsonl` files for delegated children and exposed their location as `tracePath`.
+- Added delegate turn limits, a context-budget warning before the hard stop, and a guard against repeated tool calls. Use `delegate_tasks` with `steer` to give a running Pi child a new instruction.
+- Added `pi.appendUsage()` to record model usage outside the conversation. Delegate tasks use it to record child usage in the parent session.
 
 ### Changed
 
@@ -188,6 +191,8 @@
 - Fixed Enter on a Tab path menu for an absolute path (`look at /tmp/fi`) or a slash command argument menu (`/open /tm`) submitting the prompt instead of accepting the completion ([#12309](https://github.com/earendil-works/pi/issues/12309), [#12312](https://github.com/earendil-works/pi/pull/12312) by [@acmerfight](https://github.com/acmerfight))
 - Fixed numeric tool arguments accepting `NaN`, `Infinity`, and `-Infinity`. Number and integer parameters now reject these values, including values calculated in codemode scripts.
 - Fixed delegate children failing to start when task or temporary directory paths exceed the Unix socket path limit.
+- Fixed delegate snapshots missing same-size edits. `accept` and `undo` keep the final state and any trace until `prune` removes them.
+- Fixed delegate `accept` and `undo` missing final usage when they run before the next status check.
 
 ### Removed
 

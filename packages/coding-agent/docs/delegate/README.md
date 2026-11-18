@@ -22,6 +22,20 @@ Where the code lives:
   `delegate/tests/` — runtime tests (node:test).
 - `test/delegate-*.test.ts` — fork tests (vitest).
 
+## Task traces
+
+Both workers write `trace.jsonl` in the private task directory. Task status reports its location as `tracePath`. Each line is a JSON object in the same format, regardless of provider. The trace includes the task prompt, assistant text, tool calls and results where the provider reports them, and token counts. It does not record cost.
+
+`accept` and `undo` keep the trace and final state. `prune` removes them. A trace can contain private prompts, commands, and output. Review it before you share it.
+
+## Task limits
+
+- `maxTurns` limits the number of turns (`0` turns the limit off). The last allowed turn can finish its tool calls or return a final answer. The bundled Pi child blocks the next provider request. Claude and Command Code also get their native turn-limit flag. For other child CLIs, the worker can only act on the turn events they report.
+- `contextBudget` is a token limit for one request, not a total for the task. The worker warns once at 80% and stops when reported context exceeds the limit. It checks reported usage, so it cannot prevent a request that has already run.
+- The loop guard counts repeated calls with the same tool and arguments in the last 20 calls. It counts a reported call ID only once. After three matches it steers a Pi child to try another approach; after five it stops the task. File changes in the writable scope reset the guard.
+
+The worker reports a guard stop as `blocked`. Changes stay in the project for review. Use `accept` to keep them or `undo` to restore the scope.
+
 ## Provenance
 
 - Upstream project: `earendil-works/pi`, release `v1.4.0`.
@@ -115,7 +129,7 @@ project agents: the manager asks the user once for each project agent in a sessi
 - [ ] Rejects Claude (`claude` provider / host agents) children from a Claude Code host — not applicable: the host is `delegate-pi`, not Claude Code, and `claude` is a supported child provider. The equivalent protection, blocking nested delegation via `DELEGATE_DEPTH`, exists and is tested (delegate/tests/nested.test.ts).
 - [x] Providers enumerated — the fork supports `pi`, `claude`, `codex`, `commandcode` (`delegate/core/providers.ts`; delegate/tests/tools.test.ts).
 - [~] Child agents discovered from `delegate agents` and used as the schema enum — the `agents` CLI command and transport are tested (test/delegate-transport.test.ts, delegate/tests/config.test.ts), but the discovered names never reach the registered tool: `registerTools` runs once at extension load with the static default list and the `session_start` re-registration is a no-op. The schema uses a plain string with the agent list in the description, not an enum.
-- [x] Input schema: `agent`, `task`, `tasks[]` (`agent`, `task`, `provider`, `model`, `scope`, ...), `provider`, `model`, `runtimeMode`, `scope`, `cwd`, `timeoutMs`, `background`, `waitMs`, `contextBudget` (test/delegate-tools.test.ts, exercised through `execute`).
+- [x] Input schema: `agent`, `task`, `tasks[]` (`agent`, `task`, `provider`, `model`, `scope`, ...), `provider`, `model`, `runtimeMode`, `scope`, `cwd`, `timeoutMs`, `maxTurns`, `background`, `waitMs`, `contextBudget` (test/delegate-tools.test.ts, exercised through `execute`).
 - [~] `runtimeMode`: `full-access` or `approval-required` — a free-form string in the tool schema, defaulted to `approval-required` and validated in `delegate/core/core.ts` (codex cannot relay approvals); no test asserts the values.
 - [x] `scope`: project paths the child may change; `["."]` = whole project, `[]` = read-only; overlapping scopes serialized via scope locks (delegate/tests/workspace.test.ts, delegate/tests/runtime.test.ts).
 - [x] Default `timeoutMs` 15 minutes; `background` default true; `waitMs` default 300000 (test/delegate-tools.test.ts — default background and foreground wait are exercised; the 900000/300000 numbers are not asserted).
@@ -127,11 +141,11 @@ project agents: the manager asks the user once for each project agent in a sessi
 ### C. `delegate_tasks` tool (`src/extensions/delegate/tools.ts`)
 
 - [x] Registered as `delegate_tasks` (test/delegate-tools.test.ts, test/delegate-delivery.test.ts).
-- [x] Actions: `wait`, `status`, `cancel`, `diff`, `accept`, `undo`, `prune` (default `status`), plus the fork-added `answer` and `models` (test/delegate-tools.test.ts).
+- [x] Actions: `wait`, `status`, `cancel`, `steer`, `diff`, `accept`, `undo`, `prune` (default `status`), plus the fork-added `answer` and `models` (test/delegate-tools.test.ts). `steer` queues one mid-run instruction for a Pi child over RPC. The tool rejects a second request while the first waits for a reply. Task status counts the request only after Pi accepts it and reports a rejection or an unconfirmed request. Other providers reject `steer`; cancel and restart those tasks (delegate/tests/steer.test.ts, delegate/tests/providers.test.ts).
 - [x] `wait` blocks until children stop or `waitMs` elapses (default 600000, min 60000, max 1200000) (test/delegate-tools.test.ts, test/delegate-manager.test.ts; the still-running-after-timeout branch has no direct test).
 - [x] `prune` removes old stopped task folders (`olderThan`, default `7d`) (test/delegate-tools.test.ts, delegate/tests/prune.test.ts).
 - [x] `models` lists the models of all providers or one provider through the CLI `models` command (test/delegate-tools.test.ts, test/delegate-transport.test.ts, delegate/tests/models.test.ts).
-- [x] `accept` keeps changes and frees the scope; `undo` restores the scope (`force` overwrites later edits) (delegate/tests/prune.test.ts, delegate/tests/workspace.test.ts).
+- [x] `accept` keeps changes and frees the scope; `undo` restores the scope (`force` overwrites later edits). Both keep only the final state and any existing `trace.jsonl` until `prune` removes them (delegate/tests/prune.test.ts, delegate/tests/workspace.test.ts).
 - [x] `diff` returns the task diff (test/delegate-tools.test.ts, test/delegate-transport.test.ts).
 - [~] `status` returns task detail and open questions — `detailText` returns the detail (test/delegate-tools.test.ts) but does not include the pending question text; pending questions surface only as the `asking` status.
 - [~] Unknown actions fall back to `status` — replaced by a schema union of literals (unknown actions are rejected at validation) with a fall-through to refresh in `execute`; no test covers the fallback path.
@@ -141,6 +155,7 @@ project agents: the manager asks the user once for each project agent in a sessi
 - [x] Plugin state: the reference's `tasks`/`calls` atoms map to session custom entries `delegate.tasks` and `delegate.calls`, plus a fork-added `delegate.reports` receipt entry (test/delegate-manager.test.ts, test/delegate-ui.test.ts).
 - [x] `TaskView` and `CallView` shapes match `hosts/claude/types/` of the delegate repository at `3b8846d` — the fork is a superset: it adds `fullSummary`, `logPath`, `error`, `restored`; `CallView` is identical (envelopes round-trip in test/delegate-manager.test.ts, test/delegate-delivery.test.ts).
 - [x] Task state persisted and merged incrementally; an entry is appended only when the state changed (test/delegate-manager.test.ts, "does not append a task entry when its state did not change").
+- [x] Reported child usage counts once in the parent session, including when `accept` or `undo` gets the final state before polling does (test/delegate-manager.test.ts).
 - [x] Child processes read/written through the `delegate.mjs` CLI — resolved from the package dir (`delegate/core/delegate.mjs`) with `DELEGATE_DATA`/`DELEGATE_*` env, not the reference's `HOME`/`DELEGATE_PREFIX` lookup (test/delegate-transport.test.ts; real runtime in delegate/tests/runtime.test.ts and delegate/tests/bundled-sandbox.test.ts, gated on `bwrap`/bundle; packaging in test/delegate-fork-distribution.test.ts).
 - [x] Follower polls `tasks/<id>/state.json`, refreshing via `status` every 20 ticks (`STATUS_EVERY = 20`) (test/delegate-transport.test.ts "polls the configured data directory"; tick loops in test/delegate-manager.test.ts and test/delegate-delivery.test.ts exercise the cadence indirectly).
 - [x] Pending child questions surfaced to the user and answers routed back (permission + free-text) (test/delegate-manager.test.ts, test/delegate-delivery.test.ts, test/delegate-ui.test.ts).

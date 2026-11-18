@@ -33,6 +33,12 @@ const requestSchema = Type.Object({
 	),
 	scope: Type.Optional(Type.Array(Type.String(), { description: "Project paths this child may change." })),
 	timeoutMs: Type.Optional(Type.Number({ description: "Stop this child after this time. Default 15 minutes." })),
+	maxTurns: Type.Optional(
+		Type.Number({
+			description:
+				"Stop after this many assistant turns. Unset uses the agent's maxTurns; no cap when both are unset.",
+		}),
+	),
 	noProgressMs: Type.Optional(
 		Type.Number({ description: "Stop this child after this long without progress. 0 is off." }),
 	),
@@ -57,6 +63,7 @@ const chainItemSchema = Type.Object({
 	runtimeMode: Type.Optional(Type.String({ description: "full-access or approval-required for this step." })),
 	scope: Type.Optional(Type.Array(Type.String(), { description: "Project paths this step may change." })),
 	timeoutMs: Type.Optional(Type.Number({ description: "Stop this step after this time." })),
+	maxTurns: Type.Optional(Type.Number({ description: "Stop this step after this many assistant turns." })),
 	noProgressMs: Type.Optional(Type.Number({ description: "Stop this step after this long without progress." })),
 	contextBudget: Type.Optional(
 		Type.Number({
@@ -92,6 +99,12 @@ const delegateSchema = Type.Object({
 	),
 	cwd: Type.Optional(Type.String({ description: "Project directory. Defaults to the session working directory." })),
 	timeoutMs: Type.Optional(Type.Number({ description: "Stop a child after this time. Default 15 minutes." })),
+	maxTurns: Type.Optional(
+		Type.Number({
+			description:
+				"Stop each child after this many assistant turns. Unset uses the agent's maxTurns; no cap when both are unset.",
+		}),
+	),
 	noProgressMs: Type.Optional(
 		Type.Number({ description: "Stop a child after this long without progress. 0 is off." }),
 	),
@@ -119,6 +132,7 @@ const tasksSchema = Type.Object({
 				Type.Literal("status"),
 				Type.Literal("answer"),
 				Type.Literal("cancel"),
+				Type.Literal("steer"),
 				Type.Literal("diff"),
 				Type.Literal("accept"),
 				Type.Literal("undo"),
@@ -136,6 +150,12 @@ const tasksSchema = Type.Object({
 	taskId: Type.Optional(Type.String({ description: "The task ID from the delegate report." })),
 	requestId: Type.Optional(Type.String({ description: "For answer: the pending question id." })),
 	answer: Type.Optional(Type.String({ description: "For answer: the answer to a question." })),
+	message: Type.Optional(
+		Type.String({
+			description:
+				"For steer: a short instruction to a running child whose provider supports it (Pi). Use it to change approach; cancel and restart other providers.",
+		}),
+	),
 	approved: Type.Optional(Type.Boolean({ description: "For answer: approve or deny a permission request." })),
 	approve: Type.Optional(Type.Boolean({ description: "For answer: alias for approved." })),
 	waitMs: Type.Optional(
@@ -186,6 +206,7 @@ function overrides(
 		scope?: string[];
 		runtimeMode?: string;
 		timeoutMs?: number;
+		maxTurns?: number;
 		noProgressMs?: number;
 		contextBudget?: number;
 	},
@@ -197,6 +218,7 @@ function overrides(
 		scope: item.scope ?? base.scope,
 		runtimeMode: item.runtimeMode ?? base.runtimeMode,
 		timeoutMs: item.timeoutMs ?? base.timeoutMs,
+		maxTurns: item.maxTurns ?? base.maxTurns,
 		noProgressMs: item.noProgressMs ?? base.noProgressMs,
 		contextBudget: item.contextBudget ?? base.contextBudget,
 	};
@@ -226,6 +248,7 @@ export function resolveMode(input: DelegateInput, cwd: string): ResolvedMode {
 		runtimeMode: input.runtimeMode,
 		scope: input.scope,
 		timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+		maxTurns: input.maxTurns,
 		noProgressMs: input.noProgressMs,
 		contextBudget: input.contextBudget,
 		cwd: input.cwd || cwd,
@@ -378,7 +401,7 @@ export function createDelegateTasksTool(
 	return defineTool({
 		name: DELEGATE_TASKS_TOOL_NAME,
 		label: DELEGATE_TASKS_TOOL_NAME,
-		description: `Wait for, check, answer, cancel, review, accept or undo a child task that the delegate tool started. wait blocks until the running children stop and returns the <${REPORT_TAG}> notice, or says the tasks are still running after waitMs; then call it again or do other work. Do not poll with status: it returns at once while children run, and each call sends the full context again. Use wait. After a write task stops, diff shows its changes, accept keeps them and frees the scope, and undo restores the scope. Accept and undo also remove the task folder. prune removes old folders of stopped tasks. Use action models to discover available models, optionally for one provider.`,
+		description: `Wait for, check, answer, steer, cancel, review, accept or undo a child task that the delegate tool started. wait blocks until the running children stop and returns the <${REPORT_TAG}> notice, or says the tasks are still running after waitMs; then call it again or do other work. Do not poll with status: it returns at once while children run, and each call sends the full context again. Use wait. steer sends a short mid-run instruction to a Pi child; other providers must be cancelled and restarted. After a write task stops, diff shows its changes, accept keeps them and frees the scope, and undo restores the scope. Accept and undo keep the final state and trace. prune removes old folders of stopped tasks. Use action models to discover available models, optionally for one provider.`,
 		parameters: tasksSchema,
 		renderShell: "self",
 		reachesTools: () => [],
@@ -454,6 +477,12 @@ export function createDelegateTasksTool(
 					if (!manager.get(taskId)) return unknownTask(taskId);
 					const view = await manager.cancel(taskId);
 					return textResult(`Cancel sent to ${taskId}. Status: ${view.status}.`, { taskId, status: view.status });
+				}
+				if (action === "steer") {
+					if (!manager.get(taskId)) return unknownTask(taskId);
+					if (!input.message?.trim()) return errorResult("steer needs a message.", { taskId });
+					await manager.steer(taskId, input.message);
+					return textResult(`Steering queued for ${taskId}.`, { taskId, status: "steer_queued" });
 				}
 				if (action === "diff") {
 					if (!manager.get(taskId)) return unknownTask(taskId);

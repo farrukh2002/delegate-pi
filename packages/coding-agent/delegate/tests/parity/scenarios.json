@@ -1,4 +1,301 @@
 {
+	"steering": {
+		"scope": [],
+		"steer": "Use the other test runner.",
+		"noProgressMs": 5000,
+		"steps": [{ "expectSteer": "Use the other test runner." }, { "exit": 0 }]
+	},
+	"turn-final-answer": {
+		"scope": [],
+		"maxTurns": 1,
+		"expect": { "status": "completed", "turns": 1, "summaryPrefix": "Finished at the limit" },
+		"steps": [
+			{ "emit": { "type": "turn_start" } },
+			{ "assistant": { "id": "m1", "content": [{ "type": "text", "text": "Finished at the limit" }], "usage": { "input": 10 } } },
+			{ "sleep": 300 },
+			{ "emit": { "type": "turn_end" } },
+			{ "exit": 0 }
+		]
+	},
+	"turn-tool-work": {
+		"scope": ["src"],
+		"files": { "src/result.txt": "unchanged" },
+		"maxTurns": 1,
+		"expect": {
+			"status": "blocked", "turns": 1, "scopeHeld": true, "summaryPrefix": "Turn budget reached: the child ran 1 turns",
+			"files": { "src/result.txt": "last allowed turn finished", "src/extra.txt": null },
+			"traceText": "tool finished before the stop"
+		},
+		"steps": [
+			{ "emit": { "type": "turn_start" } },
+			{
+				"assistant": {
+					"id": "m1", "usage": { "input": 10 },
+					"content": [{ "type": "toolCall", "id": "t1", "name": "write", "arguments": { "path": "src/result.txt" } }]
+				}
+			},
+			{ "sleep": 300 },
+			{ "write": "src/result.txt", "text": "last allowed turn finished" },
+			{
+				"emit": {
+					"type": "message_end",
+					"message": { "role": "toolResult", "toolCallId": "t1", "toolName": "write", "content": [{ "type": "text", "text": "tool finished before the stop" }] }
+				}
+			},
+			{ "emit": { "type": "turn_end" } },
+			{ "emit": { "type": "turn_start" } },
+			{ "sleep": 500 },
+			{ "write": "src/extra.txt", "text": "must not run" },
+			{ "exit": 0 }
+		]
+	},
+	"turn-pi-native-limit": {
+		"scope": [],
+		"maxTurns": 1,
+		"expect": { "status": "blocked", "turns": 1, "summaryPrefix": "Turn budget reached" },
+		"steps": [
+			{ "emit": { "type": "delegate_turn_limit", "turns": 1 } },
+			{ "assistant": { "usage": {}, "stopReason": "aborted", "errorMessage": "Delegate turn limit reached." } },
+			{ "exit": 0 }
+		]
+	},
+	"turn-claude-native-limit": {
+		"provider": "claude",
+		"fake": "claude",
+		"scope": [],
+		"maxTurns": 1,
+		"expect": { "status": "blocked", "turns": 1, "summaryPrefix": "Turn budget reached", "costUsd": 0.004 },
+		"steps": [
+			{ "emit": { "type": "result", "subtype": "error_max_turns", "is_error": true, "total_cost_usd": 0.004 } },
+			{ "exit": 1 }
+		]
+	},
+	"turn-commandcode-next": {
+		"provider": "commandcode",
+		"fake": "commandcode",
+		"scope": [],
+		"maxTurns": 1,
+		"expect": { "status": "blocked", "turns": 1, "summaryPrefix": "Turn budget reached" },
+		"steps": [
+			{ "emit": { "type": "event", "event": { "type": "turn_start" } } },
+			{ "emit": { "type": "event", "event": { "type": "model_request_end", "usage": { "inputTokens": 50 } } } },
+			{ "emit": { "type": "event", "event": { "type": "turn_start" } } },
+			{ "exit": 0 }
+		]
+	},
+	"turn-codex-over-limit": {
+		"provider": "codex",
+		"fake": "codex",
+		"scope": [],
+		"runtimeMode": "full-access",
+		"maxTurns": 1,
+		"expect": { "status": "blocked", "turns": 2, "summaryPrefix": "Turn budget reached" },
+		"steps": [
+			{ "emit": { "type": "turn.completed", "usage": { "input_tokens": 10 } } },
+			{ "emit": { "type": "turn.completed", "usage": { "input_tokens": 11 } } },
+			{ "exit": 0 }
+		]
+	},
+	"turn-codex-next": {
+		"provider": "codex",
+		"fake": "codex",
+		"scope": [],
+		"runtimeMode": "full-access",
+		"maxTurns": 1,
+		"expect": { "status": "blocked", "turns": 1, "summaryPrefix": "Turn budget reached" },
+		"steps": [
+			{ "emit": { "type": "turn.started" } },
+			{ "emit": { "type": "turn.completed", "usage": { "input_tokens": 10 } } },
+			{ "emit": { "type": "turn.started" } },
+			{ "exit": 0 }
+		]
+	},
+	"context-budget": {
+		"scope": [],
+		"contextBudget": 10000,
+		"expect": {
+			"status": "blocked", "turns": 4, "summaryPrefix": "Context budget reached: the child carried 10001 tokens",
+			"budgetNotice": "Context budget warning: this child carried 8000 of 10000 tokens in one request."
+		},
+		"steps": [
+			{ "assistant": { "id": "m1", "usage": { "totalTokens": 7999 } } },
+			{ "assistant": { "id": "m2", "usage": { "totalTokens": 8000 } } },
+			{ "sleep": 250 },
+			{ "assistant": { "id": "m3", "usage": { "totalTokens": 10000 } } },
+			{ "sleep": 200 },
+			{ "assistant": { "id": "m4", "usage": { "totalTokens": 10001 } } },
+			{ "stderr": "Fixture shutdown diagnostic" },
+			{ "exit": 0 }
+		]
+	},
+	"loop-duplicate-calls": {
+		"scope": [],
+		"expect": { "status": "completed" },
+		"steps": [{ "calls": ["t1", "t1", "t1", "t1", "t1", "t1"] }, { "exit": 0 }]
+	},
+	"loop-steer-and-stop": {
+		"scope": [],
+		"noProgressMs": 5000,
+		"expect": { "status": "blocked", "steers": 1, "summaryPrefix": "Loop detected: the child repeated bash: check-fixture 5 times" },
+		"steps": [
+			{ "calls": ["t1", "t2", "t3"] },
+			{ "expectGuard": true },
+			{ "calls": ["t4", "t5"] },
+			{ "sleep": 600 },
+			{ "exit": 0 }
+		]
+	},
+	"loop-rearms-after-edit": {
+		"scope": ["src"],
+		"files": { "src/result.txt": "before" },
+		"noProgressMs": 5000,
+		"expect": { "status": "completed", "steers": 2, "files": { "src/result.txt": "progress made" } },
+		"steps": [
+			{ "calls": ["t1", "t2", "t3"] },
+			{ "expectGuard": true },
+			{ "write": "src/result.txt", "text": "progress made" },
+			{ "sleep": 250 },
+			{ "calls": ["t4", "t5", "t6"] },
+			{ "expectGuard": true },
+			{ "exit": 0 }
+		]
+	},
+	"loop-file-event-race": {
+		"scope": ["src"],
+		"files": { "src/result.txt": "before" },
+		"expect": { "status": "completed", "files": { "src/result.txt": "progress made" } },
+		"steps": [
+			{ "calls": ["t1", "t2", "t3", "t4"] },
+			{ "write": "src/result.txt", "text": "progress made" },
+			{ "calls": ["t5"] },
+			{ "sleep": 300 },
+			{ "exit": 0 }
+		]
+	},
+	"trace-pi": {
+		"scope": [],
+		"settle": "accept",
+		"trace": [
+			{
+				"type": "assistant",
+				"message": {
+					"role": "assistant",
+					"id": "m1",
+					"model": "fixture-model",
+					"content": [
+						{ "type": "text", "text": "Check the tests." },
+						{ "type": "tool_use", "id": "t1", "name": "bash", "input": { "command": "run-tests" } }
+					],
+					"usage": { "input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 2, "cache_creation_input_tokens": 1 }
+				}
+			},
+			{
+				"type": "user",
+				"message": {
+					"role": "user",
+					"content": [{ "type": "tool_result", "tool_use_id": "t1", "content": "Test failed: 日本語", "is_error": true }]
+				}
+			}
+		],
+		"steps": [
+			{
+				"emit": {
+					"type": "message_end",
+					"message": {
+						"id": "m1", "role": "assistant", "model": "fixture-model",
+						"content": [
+							{ "type": "text", "text": "Check the tests." },
+							{ "type": "toolCall", "id": "t1", "name": "bash", "arguments": { "command": "run-tests" } }
+						],
+						"usage": { "input": 10, "output": 5, "cacheRead": 2, "cacheWrite": 1, "totalTokens": 18, "cost": { "total": 0.001 } }
+					}
+				}
+			},
+			{
+				"emit": {
+					"type": "message_end",
+					"message": { "role": "assistant", "content": [{ "type": "toolCall", "id": "t1", "name": "bash", "arguments": { "command": "run-tests" } }] }
+				}
+			},
+			{
+				"emit": {
+					"type": "message_end",
+					"message": { "role": "toolResult", "toolCallId": "t1", "toolName": "bash", "content": [{ "type": "text", "text": "Test failed: 日本語" }], "isError": true }
+				}
+			},
+			{
+				"emit": {
+					"type": "tool_result_end",
+					"message": { "toolCallId": "t1", "toolName": "bash", "content": [{ "type": "text", "text": "Test failed: 日本語" }], "isError": true }
+				}
+			},
+			{ "exit": 0 }
+		]
+	},
+	"trace-claude": {
+		"provider": "claude",
+		"fake": "claude",
+		"scope": [],
+		"trace": [
+			{
+				"type": "assistant",
+				"message": {
+					"role": "assistant",
+					"id": "m1",
+					"model": "fixture-model",
+					"content": [{ "type": "tool_use", "id": "t1", "name": "Read", "input": { "file_path": "README.md" } }],
+					"usage": { "input_tokens": 3, "output_tokens": 2, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0 }
+				}
+			},
+			{
+				"type": "user",
+				"message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "t1", "content": "project" }] }
+			}
+		],
+		"steps": [
+			{
+				"emit": {
+					"type": "assistant",
+					"message": {
+						"id": "m1", "role": "assistant", "model": "fixture-model",
+						"content": [{ "type": "tool_use", "id": "t1", "name": "Read", "input": { "file_path": "README.md" } }],
+						"usage": { "input_tokens": 3, "output_tokens": 2 }
+					}
+				}
+			},
+			{
+				"emit": {
+					"type": "user",
+					"message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "t1", "content": [{ "type": "text", "text": "project" }] }] }
+				}
+			},
+			{ "exit": 0 }
+		]
+	},
+	"trace-codex": {
+		"provider": "codex",
+		"fake": "codex",
+		"scope": [],
+		"runtimeMode": "full-access",
+		"trace": [
+			{
+				"type": "assistant",
+				"message": {
+					"role": "assistant", "id": "assistant-1",
+					"content": [{ "type": "tool_use", "id": "t1", "name": "bash", "input": { "command": "run-tests" } }]
+				}
+			},
+			{
+				"type": "user",
+				"message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "t1", "content": "Test failed", "is_error": true }] }
+			}
+		],
+		"steps": [
+			{ "emit": { "type": "item.started", "item": { "id": "t1", "type": "command_execution", "command": "run-tests" } } },
+			{ "emit": { "type": "item.completed", "item": { "id": "t1", "type": "command_execution", "command": "run-tests", "aggregated_output": "Test failed", "exit_code": 1 } } },
+			{ "exit": 0 }
+		]
+	},
 	"read-only": {
 		"scope": [],
 		"steps": [
@@ -67,6 +364,8 @@
 		]
 	},
 	"edit": {
+		"settle": "undo",
+		"indexTime": 1700000000,
 		"scope": [
 			"src"
 		],
@@ -102,7 +401,8 @@
 			},
 			{
 				"write": "src/a.ts",
-				"text": "two\n"
+				"text": "two\n",
+				"mtime": 1700000000
 			},
 			{
 				"emit": {
@@ -339,6 +639,22 @@
 		"provider": "commandcode",
 		"fake": "commandcode",
 		"scope": [],
+		"trace": [
+			{
+				"type": "assistant",
+				"message": {
+					"role": "assistant", "id": "assistant-1", "content": [],
+					"usage": { "input_tokens": 150, "output_tokens": 25, "cache_read_input_tokens": 50, "cache_creation_input_tokens": 3 }
+				}
+			},
+			{
+				"type": "assistant",
+				"message": {
+					"role": "assistant", "id": "assistant-2",
+					"content": [{ "type": "text", "text": "Checked with Command Code." }]
+				}
+			}
+		],
 		"steps": [
 			{
 				"emit": {

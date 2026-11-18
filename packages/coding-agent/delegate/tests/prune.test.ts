@@ -6,7 +6,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { TASKS, git, snapshot } from "../core/workspace.ts";
-import { accept, parseOlderThan, prune, status } from "../core/core.ts";
+import { accept, diff, parseOlderThan, prune, status, undo } from "../core/core.ts";
 
 const created: string[] = [];
 after(() => { for (const dir of created) fs.rmSync(dir, { recursive: true, force: true }); });
@@ -80,13 +80,41 @@ test("prune drops the git refs of a removed task", () => {
 	assert.equal(git(cwd, ["for-each-ref", `refs/delegate/${id}`]), "");
 });
 
-test("accept removes the task folder and the id becomes unknown", () => {
-	const cwd = tempDir();
-	const id = randomUUID();
-	makeTask(id, { taskId: id, status: "completed", scope: [], scopeHeld: false, pending: [] }, { cwd, scope: [] });
+for (const action of ["accept", "undo"] as const) {
+	test(`${action} keeps the final state and trace until prune`, () => {
+		const cwd = tempDir();
+		const id = randomUUID();
+		const dir = path.join(TASKS, id);
+		const tracePath = path.join(dir, "trace.jsonl");
+		const logPath = path.join(dir, "child.log");
+		const scope = action === "undo" ? ["a.txt"] : [];
+		const old = Date.now() - 10 * 86400000;
+		const finalStatus = action === "accept" ? "accepted" : "undone";
+		makeTask(id, { taskId: id, status: "completed", scope, scopeHeld: false, finishedAt: old, tracePath, logPath }, { cwd, scope });
+		fs.writeFileSync(tracePath, '{"type":"user"}\n');
+		fs.writeFileSync(logPath, "child output");
+		if (action === "undo") {
+			git(cwd, ["init", "-q", "-b", "main"]);
+			fs.writeFileSync(path.join(cwd, "a.txt"), "before\n");
+			git(cwd, ["add", "-A"]);
+			git(cwd, ["commit", "-q", "-m", "init"]);
+			snapshot(cwd, scope, id, "before", dir);
+			fs.writeFileSync(path.join(cwd, "a.txt"), "after\n");
+			snapshot(cwd, scope, id, "after", dir);
+		}
 
-	const state = accept(id);
-	assert.equal(state.accepted, true);
-	assert.equal(fs.existsSync(path.join(TASKS, id)), false);
-	assert.throws(() => status(id));
-});
+		const state = action === "accept" ? accept(id) : undo(id);
+
+		assert.equal(state[finalStatus], true);
+		assert.equal(state.logPath, undefined);
+		assert.equal(status(id)[finalStatus], true);
+		assert.equal(status(id).tracePath, tracePath);
+		assert.equal(fs.readFileSync(tracePath, "utf8"), '{"type":"user"}\n');
+		assert.deepEqual(fs.readdirSync(dir).sort(), ["state.json", "trace.jsonl"]);
+		assert.throws(() => accept(id), /already accepted|already undone/);
+		assert.deepEqual(diff(id), { taskId: id, diff: "" });
+		if (action === "undo") assert.equal(fs.readFileSync(path.join(cwd, "a.txt"), "utf8"), "before\n");
+		assert.ok(prune(7 * 86400000).removed.includes(id));
+		assert.throws(() => status(id));
+	});
+}

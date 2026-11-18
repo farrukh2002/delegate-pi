@@ -51,11 +51,27 @@ export interface DelegateState {
 	heartbeat?: number;
 	diffstat?: string;
 	logPath?: string;
+	tracePath?: string;
+	budgetNotice?: string;
+	steers?: number;
+	steerError?: string | null;
 	costUsd?: number | null;
-	usage?: { turns?: number; contextTokens?: number; cost?: number };
+	usage?: {
+		turns?: number;
+		contextTokens?: number;
+		cost?: number;
+		input?: number;
+		output?: number;
+		cacheRead?: number;
+		cacheWrite?: number;
+	};
+	/** The child's model, from its last assistant message, for usage attribution. */
+	model?: string;
 	activity?: string[];
 	pending?: DelegatePending[];
 	restored?: string[];
+	accepted?: boolean;
+	undone?: boolean;
 	error?: string;
 }
 
@@ -71,9 +87,20 @@ export type TaskView = {
 	turns?: number;
 	contextTokens?: number;
 	costUsd?: number;
+	/** The child's token breakdown, so the parent session can charge what it spent. */
+	tokens?: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number };
+	/** The child's model, from its last assistant message. */
+	model?: string;
 	summary?: string;
 	fullSummary?: string;
 	logPath?: string;
+	/** Claude-shaped trace of the child's work, folded for learning by TokenEconomizer. */
+	tracePath?: string;
+	/** One context-budget warning, shown before the hard stop. */
+	budgetNotice?: string;
+	/** Mid-run instructions delivered to the child. */
+	steers?: number;
+	steerError?: string;
 	error?: string;
 	diffstat?: string;
 	pending?: number;
@@ -132,11 +159,17 @@ export function agentsLabel(rows: Pick<TaskView, "agent">[]): string {
 }
 
 export function toTaskView(state: DelegateState, previous?: Partial<TaskView>): TaskView {
+	const status = state.accepted
+		? "accepted"
+		: state.undone
+			? "undone"
+			: (state.status ?? previous?.status ?? "starting");
+	const settled = status === "accepted" || status === "undone";
 	return {
 		taskId: state.taskId,
 		agent: state.agent ?? previous?.agent ?? "",
 		provider: state.provider ?? previous?.provider ?? "",
-		status: state.status ?? previous?.status ?? "starting",
+		status,
 		scope: state.scope ?? previous?.scope ?? [],
 		task: previous?.task ?? short(state.task, 300),
 		startedAt: state.startedAt ?? previous?.startedAt,
@@ -144,11 +177,31 @@ export function toTaskView(state: DelegateState, previous?: Partial<TaskView>): 
 		turns: state.usage?.turns || previous?.turns,
 		contextTokens: state.usage?.contextTokens || previous?.contextTokens,
 		costUsd: state.costUsd ?? previous?.costUsd,
+		tokens:
+			state.usage && typeof state.usage.input === "number"
+				? {
+						input: state.usage.input ?? 0,
+						output: state.usage.output ?? 0,
+						cacheRead: state.usage.cacheRead ?? 0,
+						cacheWrite: state.usage.cacheWrite ?? 0,
+						cost: state.usage.cost ?? 0,
+					}
+				: previous?.tokens,
+		model: state.model ?? previous?.model,
 		summary: state.summary ? short(state.summary, 600) : previous?.summary,
 		fullSummary: state.summary ? String(state.summary) : previous?.fullSummary,
-		logPath: state.logPath ?? previous?.logPath,
+		logPath: settled ? undefined : (state.logPath ?? previous?.logPath),
+		tracePath: state.tracePath ?? (settled ? undefined : previous?.tracePath),
+		budgetNotice: state.budgetNotice ?? previous?.budgetNotice,
+		steers: state.steers || previous?.steers,
+		steerError: state.steerError ?? undefined,
 		error: state.error ?? previous?.error,
-		diffstat: state.diffstat ? String(state.diffstat).trim().split("\n").pop() : previous?.diffstat,
+		diffstat:
+			status === "undone"
+				? undefined
+				: state.diffstat
+					? String(state.diffstat).trim().split("\n").pop()
+					: previous?.diffstat,
 		pending: state.pending?.length || undefined,
 		activity: state.activity ?? previous?.activity,
 		restored: state.restored ?? previous?.restored,
@@ -180,6 +233,9 @@ export function detailText(task: TaskView, now = Date.now()): string {
 	const parts = [`[${task.agent} / ${task.provider}] ${meta}`];
 	const summary = task.fullSummary ?? task.summary;
 	if (summary) parts.push(summary.trim());
+	if (task.budgetNotice) parts.push(task.budgetNotice);
+	if (task.steers) parts.push(`Steered ${task.steers} time(s).`);
+	if (task.steerError) parts.push(task.steerError);
 	if (task.scope.length) parts.push(`Scope: ${task.scope.join(", ")}`);
 	if (task.diffstat) parts.push(`Changes:\n${task.diffstat}`);
 	if (task.logPath) parts.push(`Output log: ${task.logPath}`);

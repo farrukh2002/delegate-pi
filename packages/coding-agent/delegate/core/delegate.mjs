@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
-import { start, runOne, runMany, runWorker, status, wait, answer, cancel, accept, undo, diff, prune, parseOlderThan, MAX_TASKS } from "./core.ts";
+import { start, runOne, runMany, runWorker, status, wait, answer, cancel, steer, accept, undo, diff, prune, parseOlderThan, MAX_TASKS } from "./core.ts";
 import { agentProblem, enabledProviders, loadAgents } from "./agents.ts";
 import { listClaims } from "./workspace.ts";
 import { PROVIDERS, PROVIDER_IDS, providerAvailable } from "./providers.ts";
@@ -23,6 +23,7 @@ function request() {
     scratch: flag("--scratch")?.split(",").map(item => item.trim()).filter(Boolean),
     tools: flag("--tools"),
     timeoutMs: has("--timeout") ? Number(flag("--timeout")) : undefined,
+    maxTurns: has("--max-turns") ? Number(flag("--max-turns")) : undefined,
     noProgressMs: has("--no-progress-ms") ? Number(flag("--no-progress-ms")) : undefined,
     contextBudget: has("--context-budget") ? Number(flag("--context-budget")) : undefined,
   }).filter(([, value]) => value !== undefined));
@@ -71,7 +72,7 @@ try {
     const results = await runMany(json(), controller.signal);
     print(results);
     finish(results);
-  } else if (["status", "wait", "cancel", "answer", "accept", "undo", "diff"].includes(command)) {
+  } else if (["status", "wait", "cancel", "steer", "answer", "accept", "undo", "diff"].includes(command)) {
     const input = json();
     const id = flag("--task-id") || input.taskId;
     if (!id) throw new Error("A task ID is required");
@@ -81,6 +82,7 @@ try {
     if (command === "diff") { const result = diff(id); if (has("--text")) process.stdout.write(result.diff ? `${result.diff}\n` : ""); else print(result); }
     if (command === "wait") print(await wait(id, Number(flag("--wait-ms") || input.waitMs || 30000), controller.signal));
     if (command === "cancel") print(await cancel(id));
+    if (command === "steer") print(steer(id, flag("--message") || input.message || ""));
     if (command === "answer") {
       const value = { answer: flag("--answer") ?? input.answer, approved: has("--approve") ? true : has("--deny") ? false : input.approved };
       print(answer(id, flag("--request-id") || input.requestId, value));
@@ -118,7 +120,7 @@ try {
       }
     } else print(results);
   } else {
-    throw new Error("Use run/start --agent NAME --task TEXT [--scope PATH,PATH] [--scratch PATH,PATH]; run-many --tasks-json JSON; status/wait/cancel/diff/accept --task-id ID; undo --task-id ID [--force]; answer --task-id ID --request-id ID --answer TEXT (or --approve/--deny); prune [--older-than 7d]; agents; models [--provider P] [--refresh] [--text]; providers; claims [--cwd DIR]. Sandbox is mandatory. No scope means read-only. Default permissions require parent approval. full-access means access inside the sandbox only.");
+    throw new Error("Use run/start --agent NAME --task TEXT [--scope PATH,PATH] [--scratch PATH,PATH] [--max-turns N] [--timeout MS] [--no-progress-ms MS] [--context-budget TOKENS]; run-many --tasks-json JSON; status/wait/cancel/steer --task-id ID [--message TEXT]/diff/accept --task-id ID; undo --task-id ID [--force]; answer --task-id ID --request-id ID --answer TEXT (or --approve/--deny); prune [--older-than 7d]; agents; models [--provider P] [--refresh] [--text]; providers; claims [--cwd DIR]. Sandbox is mandatory. No scope means read-only. Default permissions require parent approval. full-access means access inside the sandbox only.");
   }
 } catch (error) {
   console.log(JSON.stringify({ error: error.message || String(error) }));

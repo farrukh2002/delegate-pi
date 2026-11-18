@@ -17,6 +17,7 @@ export interface DelegateRequest {
 	tools?: string[];
 	cwd?: string;
 	timeoutMs?: number;
+	maxTurns?: number;
 	noProgressMs?: number;
 	contextBudget?: number;
 	trustProjectAgents?: boolean;
@@ -75,6 +76,7 @@ export interface DelegateTransport {
 	poll(taskId: string): Promise<DelegateState | undefined>;
 	answer(taskId: string, requestId: string, value: DelegateAnswer): Promise<void>;
 	cancel(taskId: string, options?: DelegateRunOptions): Promise<DelegateState>;
+	steer(taskId: string, message: string, options?: DelegateRunOptions): Promise<void>;
 	diff(taskId: string, options?: DelegateRunOptions): Promise<string>;
 	accept(taskId: string): Promise<DelegateState>;
 	undo(taskId: string, force: boolean): Promise<DelegateState>;
@@ -216,6 +218,16 @@ export function createCliTransport(options: CliTransportOptions): DelegateTransp
 				"cancel",
 			);
 			return stateFromStdout(result.stdout);
+		},
+		async steer(taskId, message, runOptions) {
+			assertTaskId(taskId);
+			checked(
+				await run(["steer", "--task-id", taskId, "--message", message], {
+					timeoutMs: 15000,
+					...runOptions,
+				}),
+				"steer",
+			);
 		},
 		async diff(taskId, runOptions) {
 			assertTaskId(taskId);

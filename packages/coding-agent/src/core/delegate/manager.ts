@@ -1,3 +1,4 @@
+import type { Usage } from "@earendil-works/pi-ai";
 import type { SessionEntry } from "../session-manager.ts";
 import type {
 	DelegateAgentInfo,
@@ -46,12 +47,14 @@ export interface DelegateHost {
 	sessionId: string;
 	cwd: string;
 	branchEntries: () => SessionEntry[];
+	sessionEntries: () => SessionEntry[];
 	ui: DelegateUI;
 }
 
 export interface DelegateManagerOptions {
 	transport: DelegateTransport;
 	appendEntry: (customType: string, data: unknown) => void;
+	appendUsage?: (kind: string, provider: string, model: string, usage: Usage, note?: string) => void;
 	now?: () => number;
 	intervalMs?: number;
 	requestRender?: () => void;
@@ -105,6 +108,8 @@ function receiptIdsOf(entry: SessionEntry): string[] {
 export class DelegateManager {
 	private readonly transport: DelegateTransport;
 	private readonly appendEntry: (customType: string, data: unknown) => void;
+	private readonly appendUsage: (kind: string, provider: string, model: string, usage: Usage, note?: string) => void;
+	private readonly charged = new Set<string>();
 	private readonly now: () => number;
 	private readonly intervalMs: number;
 	private readonly requestRender: () => void;
@@ -137,6 +142,7 @@ export class DelegateManager {
 	constructor(options: DelegateManagerOptions) {
 		this.transport = options.transport;
 		this.appendEntry = options.appendEntry;
+		this.appendUsage = options.appendUsage ?? (() => {});
 		this.now = options.now ?? (() => Date.now());
 		this.intervalMs = Math.min(Math.max(options.intervalMs ?? DEFAULT_INTERVAL_MS, 100), MAX_INTERVAL_MS);
 		this.requestRender = options.requestRender ?? (() => {});
@@ -176,6 +182,7 @@ export class DelegateManager {
 		this.misses.clear();
 		this.statusMisses.clear();
 		this.ticks.clear();
+		this.charged.clear();
 		this.dialogQueue = [];
 		this.queuedPending.clear();
 		this.dialogActive = false;
@@ -206,8 +213,10 @@ export class DelegateManager {
 	restore(): void {
 		const sessionId = this.sessionId;
 		if (sessionId === undefined) return;
-		const entries = this.host?.branchEntries() ?? [];
-		for (const entry of entries) {
+		for (const entry of this.host?.sessionEntries() ?? []) {
+			if (entry.type === "usage" && entry.kind === "delegate" && entry.note) this.charged.add(entry.note);
+		}
+		for (const entry of this.host?.branchEntries() ?? []) {
 			if (entry.type !== "custom") continue;
 			const data = asRecord(entry.data);
 			if (data.owner !== sessionId) continue;
@@ -235,8 +244,12 @@ export class DelegateManager {
 		}
 		this.observeReceipts();
 		for (const task of this.tasks.values()) {
-			if (isTerminal(task.status) && !this.delivered.has(reportId(task))) this.queued.add(reportId(task));
-			else if (!isTerminal(task.status)) this.watching.add(task.taskId);
+			if (isTerminal(task.status)) {
+				this.charge(task);
+				if (!this.delivered.has(reportId(task))) this.queued.add(reportId(task));
+			} else {
+				this.watching.add(task.taskId);
+			}
 		}
 		this.rebuildInbox();
 		if (this.watching.size) this.startTimer();
@@ -430,7 +443,7 @@ export class DelegateManager {
 		} catch {
 			state = undefined;
 		}
-		if (generation !== this.generation) return;
+		if (generation !== this.generation || !this.watching.has(id)) return;
 		if (!state || typeof state.taskId !== "string") {
 			const misses = (this.misses.get(id) ?? 0) + 1;
 			this.misses.set(id, misses);
@@ -440,7 +453,7 @@ export class DelegateManager {
 				} catch {
 					state = undefined;
 				}
-				if (generation !== this.generation) return;
+				if (generation !== this.generation || !this.watching.has(id)) return;
 				if (state && typeof state.taskId === "string") {
 					this.misses.set(id, 0);
 					this.statusMisses.set(id, 0);
@@ -493,6 +506,7 @@ export class DelegateManager {
 	}
 
 	private terminalize(view: TaskView): void {
+		this.charge(view);
 		const call = this.callOf.get(view.taskId);
 		if (call) {
 			const group = this.calls.get(call)?.tasks ?? [view.taskId];
@@ -502,6 +516,38 @@ export class DelegateManager {
 			return;
 		}
 		this.enqueueBatch([reportId(view)]);
+	}
+
+	/**
+	 * Charge a finished child's spend to the parent session, once, under the child's provider
+	 * and model. The child's own usage is otherwise invisible to the session ledger: it runs in
+	 * another process and its JSONL is not part of the parent's transcript. The token split is
+	 * exact; the cost is the total the child reported, with no per-field split available.
+	 */
+	private charge(view: TaskView): void {
+		if (this.charged.has(view.taskId)) return;
+		const tokens = view.tokens;
+		const cost = view.costUsd ?? tokens?.cost ?? 0;
+		const input = tokens?.input ?? 0;
+		const output = tokens?.output ?? 0;
+		const cacheRead = tokens?.cacheRead ?? 0;
+		const cacheWrite = tokens?.cacheWrite ?? 0;
+		if (!(input || output || cacheRead || cacheWrite || cost)) return;
+		this.appendUsage(
+			"delegate",
+			view.provider || "delegate",
+			view.model || view.agent || "child",
+			{
+				input,
+				output,
+				cacheRead,
+				cacheWrite,
+				totalTokens: input + output + cacheRead + cacheWrite,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: cost },
+			},
+			view.taskId,
+		);
+		this.charged.add(view.taskId);
 	}
 
 	private enqueueBatch(reportIds: string[]): void {
@@ -680,6 +726,11 @@ export class DelegateManager {
 		return this.applyState(state, taskId);
 	}
 
+	async steer(taskId: string, message: string): Promise<void> {
+		this.assertOwner(taskId);
+		await this.transport.steer(taskId, message);
+	}
+
 	async diff(taskId: string): Promise<string> {
 		this.assertOwner(taskId);
 		return this.transport.diff(taskId);
@@ -706,7 +757,8 @@ export class DelegateManager {
 		if (generation !== this.generation) throw new Error(`Task ${taskId} is no longer owned by this session.`);
 		this.watching.delete(taskId);
 		this.stopTimerIfIdle();
-		const view = { ...toTaskView(state, this.tasks.get(taskId)), status: "accepted" };
+		const view = toTaskView({ ...state, accepted: true }, this.tasks.get(taskId));
+		this.charge(view);
 		this.tasks.set(taskId, view);
 		this.persistTasks([view]);
 		return view;
@@ -719,12 +771,8 @@ export class DelegateManager {
 		if (generation !== this.generation) throw new Error(`Task ${taskId} is no longer owned by this session.`);
 		this.watching.delete(taskId);
 		this.stopTimerIfIdle();
-		const view = {
-			...toTaskView(state, this.tasks.get(taskId)),
-			status: "undone",
-			diffstat: undefined,
-			restored: state.restored ?? [],
-		};
+		const view = toTaskView({ ...state, undone: true, restored: state.restored ?? [] }, this.tasks.get(taskId));
+		this.charge(view);
 		this.tasks.set(taskId, view);
 		this.persistTasks([view]);
 		return view;

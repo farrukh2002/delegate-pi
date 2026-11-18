@@ -24,7 +24,7 @@ interface UsageStats {
 
 type ContentPart =
 	| { type: "text"; text: string }
-	| { type: "toolCall"; name: string; arguments: Record<string, unknown> };
+	| { type: "toolCall"; id?: string; name: string; arguments: Record<string, unknown> };
 
 export type ChildEvent =
 	| {
@@ -36,6 +36,13 @@ export type ChildEvent =
 			model?: string;
 			stopReason?: string;
 			errorMessage?: string;
+	  }
+	| {
+			kind: "toolResult";
+			toolCallId?: string;
+			name: string;
+			content: string;
+			isError: boolean;
 	  }
 	| { kind: "cost"; costUsd: number }
 	| { kind: "info"; text: string };

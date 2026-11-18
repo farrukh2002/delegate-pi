@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type DelegateHost, DelegateManager, type DelegateUI, type WaitOutcome } from "../src/core/delegate/manager.ts";
 import type {
 	DelegateAgentInfo,
@@ -37,6 +37,7 @@ class FakeTransport implements DelegateTransport {
 	starts: DelegateRequest[][] = [];
 	answers: { taskId: string; requestId: string; value: DelegateAnswer }[] = [];
 	cancels: string[] = [];
+	steers: { taskId: string; message: string }[] = [];
 	absent = new Set<string>();
 	completeStatus = "completed";
 	autoFinish = false;
@@ -98,6 +99,9 @@ class FakeTransport implements DelegateTransport {
 		state.status = "cancelled";
 		return state;
 	}
+	async steer(taskId: string, message: string): Promise<void> {
+		this.steers.push({ taskId, message });
+	}
 	async diff(): Promise<string> {
 		return "diff body";
 	}
@@ -129,6 +133,7 @@ function makeHost(entries: SessionEntry[], sessionId: string, ui: DelegateUI): D
 		sessionId,
 		cwd: "/tmp/project",
 		branchEntries: () => entries,
+		sessionEntries: () => entries,
 		ui,
 	};
 }
@@ -209,6 +214,141 @@ describe("delegate manager ownership and persistence", () => {
 		await manager.tick();
 		await manager.tick();
 		expect(entriesOf(entries, "delegate.tasks").length).toBe(before);
+		manager.dispose();
+	});
+});
+
+describe("delegate manager usage attribution", () => {
+	it.each(["accept", "undo"] as const)("charges final usage on %s before the next poll", async (action) => {
+		const transport = new FakeTransport();
+		const charged = vi.fn<NonNullable<ConstructorParameters<typeof DelegateManager>[0]["appendUsage"]>>();
+		const manager = new DelegateManager({ transport, appendEntry: () => {}, appendUsage: charged });
+		manager.setHost(makeHost([], "session-a", SILENT_UI));
+		try {
+			const [view] = await manager.start([{ task: "spend", scope: ["src/a.ts"] }]);
+			const state = transport.states.get(view.taskId)!;
+			state.status = "completed";
+			state.usage = { input: 5, output: 3, cost: 0.15 };
+			state.tracePath = "/tmp/trace.jsonl";
+			const settled =
+				action === "accept" ? await manager.accept(view.taskId) : await manager.undo(view.taskId, false);
+			await manager.tick();
+
+			expect(settled.tracePath).toBe(state.tracePath);
+			expect(charged).toHaveBeenCalledExactlyOnceWith(
+				"delegate",
+				"pi",
+				"worker",
+				expect.objectContaining({
+					input: 5,
+					output: 3,
+					totalTokens: 8,
+					cost: expect.objectContaining({ total: 0.15 }),
+				}),
+				view.taskId,
+			);
+		} finally {
+			manager.dispose();
+		}
+	});
+
+	it("does not overwrite an accepted task with the result of an earlier poll", async () => {
+		const transport = new FakeTransport();
+		const manager = makeManager(transport, []);
+		try {
+			const [view] = await manager.start([{ task: "spend" }]);
+			const state = transport.states.get(view.taskId)!;
+			const poll = Promise.withResolvers<DelegateState>();
+			vi.spyOn(transport, "poll").mockReturnValueOnce(poll.promise);
+			const ticking = manager.tick();
+			const stale = { ...state };
+			state.status = "completed";
+			await manager.accept(view.taskId);
+			poll.resolve(stale);
+			await ticking;
+
+			expect(manager.get(view.taskId)?.status).toBe("accepted");
+		} finally {
+			manager.dispose();
+		}
+	});
+
+	it("charges a finished child's spend once, under its provider and model", async () => {
+		const transport = new FakeTransport();
+		const entries: SessionEntry[] = [];
+		const charged: {
+			kind: string;
+			provider: string;
+			model: string;
+			usage: {
+				input: number;
+				output: number;
+				cacheRead: number;
+				cacheWrite: number;
+				totalTokens: number;
+				cost: { total: number };
+			};
+			note?: string;
+		}[] = [];
+		const manager = new DelegateManager({
+			transport,
+			appendEntry: (customType, data) => {
+				entries.push(customEntry(customType, data));
+			},
+			appendUsage: (kind, provider, model, usage, note) => charged.push({ kind, provider, model, usage, note }),
+			now: () => 1000,
+		});
+		manager.setHost(makeHost(entries, "session-a", SILENT_UI));
+		const [view] = await manager.start([{ agent: "worker", task: "spend", provider: "pi" }]);
+		const state = transport.states.get(view.taskId)!;
+		state.status = "completed";
+		state.model = "claude-haiku-4-5";
+		state.costUsd = 0.25;
+		state.usage = { input: 10, output: 5, cacheRead: 100, cacheWrite: 20, cost: 0.25 };
+		await manager.tick();
+		await flush();
+		expect(charged).toHaveLength(1);
+		expect(charged[0]).toMatchObject({
+			kind: "delegate",
+			provider: "pi",
+			model: "claude-haiku-4-5",
+			note: view.taskId,
+			usage: {
+				input: 10,
+				output: 5,
+				cacheRead: 100,
+				cacheWrite: 20,
+				totalTokens: 135,
+				cost: { total: 0.25 },
+			},
+		});
+		await manager.tick();
+		expect(charged).toHaveLength(1);
+
+		const priorCharge = {
+			type: "usage",
+			kind: "delegate",
+			provider: "pi",
+			model: "claude-haiku-4-5",
+			usage: charged[0].usage,
+			note: view.taskId,
+		} as unknown as SessionEntry;
+		const again: unknown[] = [];
+		const restored = new DelegateManager({
+			transport,
+			appendEntry: () => {},
+			appendUsage: (...args) => again.push(args),
+			now: () => 1000,
+		});
+		restored.setHost({
+			...makeHost(entries, "session-a", SILENT_UI),
+			sessionEntries: () => [...entries, priorCharge],
+		});
+		restored.restore();
+		await restored.tick();
+		await flush();
+		expect(again).toHaveLength(0);
+		restored.dispose();
 		manager.dispose();
 	});
 });

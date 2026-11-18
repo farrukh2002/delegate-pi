@@ -81,6 +81,7 @@ function mouseEvent(y: number): TuiMouseEvent {
 class FakeTransport implements DelegateTransport {
 	states = new Map<string, DelegateState>();
 	answers: { taskId: string; requestId: string; value: DelegateAnswer }[] = [];
+	steers: { taskId: string; message: string }[] = [];
 	private counter = 0;
 
 	private assign(request: DelegateRequest): DelegateState {
@@ -132,6 +133,9 @@ class FakeTransport implements DelegateTransport {
 		const state = this.states.get(id)!;
 		state.status = "cancelled";
 		return state;
+	}
+	async steer(taskId: string, message: string): Promise<void> {
+		this.steers.push({ taskId, message });
 	}
 	async diff(): Promise<string> {
 		return "";
@@ -286,7 +290,7 @@ function makeExtCtx(entries: SessionEntry[], tui: FakeTui, ui: FakeUi): unknown 
 				};
 			},
 		},
-		sessionManager: { getBranch: () => entries, getSessionId: () => "session-1" },
+		sessionManager: { getBranch: () => entries, getEntries: () => entries, getSessionId: () => "session-1" },
 	};
 }
 
@@ -620,6 +624,7 @@ describe("delegate ui", () => {
 			sessionId: "session-1",
 			cwd: "/p",
 			branchEntries: () => [],
+			sessionEntries: () => [],
 			ui: { available: false, ask: async () => undefined, notify: () => {} },
 		});
 		const views = await manager.start([{ agent: "worker", task: "x", cwd: "/p" }]);
@@ -667,6 +672,7 @@ describe("delegate ui", () => {
 			sessionId: "session-1",
 			cwd: "/p",
 			branchEntries: () => [],
+			sessionEntries: () => [],
 			ui: { available: false, ask: async () => undefined, notify: () => {} },
 		});
 		const views = await manager.start(

@@ -1698,6 +1698,29 @@ pi.on("session_start", async (_event, ctx) => {
 });
 ```
 
+### pi.appendUsage(kind, provider, model, usage, note?)
+
+Record model-attributed usage that does not participate in LLM context, such as an extension's own side call or a delegated child's spend. `/stats` and `/usage` count it with the session's own usage, grouped under `provider/model`, and it persists with the transcript.
+
+```typescript
+pi.appendUsage(
+  "delegate",
+  "claude",
+  "claude-haiku-4-5",
+  {
+    input: 1200,
+    output: 300,
+    cacheRead: 8000,
+    cacheWrite: 0,
+    totalTokens: 9500,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.004 },
+  },
+  "task-123",
+);
+```
+
+The `usage` shape is pi-ai's `Usage`: token counts plus a `cost` object. When only a total is known, set the per-field costs to `0` and `cost.total` to the reported amount.
+
 ### pi.setSessionName(name)
 
 Set the session display name (shown in session selector instead of first message).
