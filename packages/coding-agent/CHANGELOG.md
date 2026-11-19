@@ -73,6 +73,7 @@
 - Fixed `ask_user` and other selector dialogs hiding their choices, selection marker and key hints in short terminals. The dialog now limits its height to the terminal, and a long question scrolls with the page keys.
 - Fixed collapsed output of tools without a custom renderer, such as the web tools, filling the screen when the result is one long line like minified JSON. Collapsed output is now limited to 10 wrapped rows.
 - Fixed the Settings hint saying "Esc to cancel" although changes in Settings are saved when you make them. It now says "Esc to close · Changes save immediately".
+- Fixed the `/resume` header showing "Current Folder" twice and cutting off the title and the sort label in narrow terminals. The title is now "Resume Session", and the scope, name and sort controls move to their own row when they do not fit.
 
 ### Removed
 

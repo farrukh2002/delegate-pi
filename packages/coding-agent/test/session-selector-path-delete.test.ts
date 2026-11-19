@@ -212,8 +212,8 @@ describe("session selector path/delete interactions", () => {
 
 		expect(allLoadCalls).toBe(1);
 		const output = selector.render(120).join("\n");
-		expect(output).toContain("Resume Session (Current Folder)");
-		expect(output).not.toContain("Resume Session (All)");
+		expect(output).toContain("◉ Current Folder");
+		expect(output).not.toContain("◉ All");
 	});
 
 	it("does not start redundant All loads when toggling scopes while All is already loading", async () => {
