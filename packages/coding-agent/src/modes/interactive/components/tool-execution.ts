@@ -19,6 +19,7 @@ import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "
 import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
 import { keyHint, keyText } from "./keybinding-hints.ts";
+import { VisualLinePreview } from "./visual-truncate.ts";
 
 const FALLBACK_PREVIEW_LINES = 10;
 
@@ -153,14 +154,20 @@ export class ToolExecutionComponent extends Container {
 			return undefined;
 		}
 
-		const lines = output.split("\n");
-		const displayLines = this.expanded ? lines : lines.slice(0, FALLBACK_PREVIEW_LINES);
-		const remaining = lines.length - displayLines.length;
-		let text = displayLines.map((line) => theme.fg("toolOutput", line)).join("\n");
-		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+		const text = output
+			.split("\n")
+			.map((line) => theme.fg("toolOutput", line))
+			.join("\n");
+		if (this.expanded) {
+			return new Text(text, 0, 0);
 		}
-		return new Text(text, 0, 0);
+		return new VisualLinePreview({
+			text,
+			maxVisualLines: FALLBACK_PREVIEW_LINES,
+			keep: "start",
+			formatHint: (hidden) =>
+				`${theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
+		});
 	}
 
 	private createResultRegion(component: Component): MouseRegion {

@@ -515,6 +515,32 @@ describe("ToolExecutionComponent parity", () => {
 		expect(expanded).not.toContain("more lines");
 	});
 
+	test("limits collapsed fallback results by wrapped rows, not logical lines", () => {
+		const component = new ToolExecutionComponent(
+			"custom_tool",
+			"tool-wrapped",
+			{ foo: "bar" },
+			{},
+			createBaseToolDefinition(),
+			createFakeTui(),
+			process.cwd(),
+		);
+		const json = JSON.stringify({ items: Array.from({ length: 300 }, (_, index) => `item-${index + 1}`) });
+		component.updateResult({ content: [{ type: "text", text: json }], details: {}, isError: false }, false);
+
+		const collapsedLines = component.render(80);
+		const collapsed = stripAnsi(collapsedLines.join("\n"));
+		expect(collapsedLines.length).toBeLessThanOrEqual(16);
+		expect(collapsed).toContain("more lines");
+		expect(collapsed).toContain("to expand");
+		expect(collapsed).not.toContain("item-300");
+
+		component.setExpanded(true);
+		const expandedLines = component.render(80);
+		expect(expandedLines.length).toBeGreaterThan(collapsedLines.length * 2);
+		expect(stripAnsi(expandedLines.join("")).replace(/\s+/g, "")).toContain("item-300");
+	});
+
 	test("trims trailing blank display lines from write previews", () => {
 		const component = new ToolExecutionComponent(
 			"write",
