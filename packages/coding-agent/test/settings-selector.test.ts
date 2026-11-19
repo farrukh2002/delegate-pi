@@ -64,6 +64,23 @@ describe("SettingsSelectorComponent", () => {
 		expect(onWheelScrollLinesChange.mock.calls.flat()).toEqual([10, "auto", 1]);
 	});
 
+	it("tells the user that changes save immediately when closing with Esc", () => {
+		const config = {
+			warnings: {},
+			defaultModel: "not set",
+			availableDefaultModels: [],
+			availableThinkingLevels: [],
+			modelThinkingLevels: {},
+			availableThemes: [],
+		} as unknown as SettingsConfig;
+		const callbacks = { onCancel: () => {} } as unknown as SettingsCallbacks;
+		const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+
+		const rendered = stripAnsi(list.render(100).join("\n"));
+		expect(rendered).toContain("Esc to close · Changes save immediately");
+		expect(rendered).not.toContain("Esc to cancel");
+	});
+
 	it("cycles through share destinations", () => {
 		const onSessionShareDestinationChange = vi.fn();
 		const config = {

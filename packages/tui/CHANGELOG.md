@@ -6,6 +6,14 @@
 
 - `Component.render()` now returns `readonly string[]`, and `Container.render()` returns the same cached array while its children are unchanged, like `Text`, `Markdown`, and `Box` already did. Code that modifies render output in place, including `super.render()` in a `Container` subclass, must copy it first ([#9549](https://github.com/earendil-works/pi/issues/9549))
 
+### Added
+
+- Added the `cancelHint` option to `SettingsList` to replace the "Esc to cancel" text in its hint line.
+
+### Changed
+
+- `SettingsList` now wraps its hint line instead of cutting it off at the terminal width.
+
 ### Fixed
 
 - Fixed fullscreen Kitty images disappearing after a full redraw such as a window resize. Clearing the screen made Kitty free the cached image data that the redraw then tried to reuse ([#12010](https://github.com/earendil-works/pi/issues/12010))

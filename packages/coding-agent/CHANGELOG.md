@@ -72,6 +72,7 @@
 - Fixed OpenAI Codex turns failing when the WebSocket reaches its 60-minute limit. Pi retries on a new connection ([#12124](https://github.com/earendil-works/pi/issues/12124)).
 - Fixed `ask_user` and other selector dialogs hiding their choices, selection marker and key hints in short terminals. The dialog now limits its height to the terminal, and a long question scrolls with the page keys.
 - Fixed collapsed output of tools without a custom renderer, such as the web tools, filling the screen when the result is one long line like minified JSON. Collapsed output is now limited to 10 wrapped rows.
+- Fixed the Settings hint saying "Esc to cancel" although changes in Settings are saved when you make them. It now says "Esc to close · Changes save immediately".
 
 ### Removed
 

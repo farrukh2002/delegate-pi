@@ -40,6 +40,8 @@ import { SelectSubmenu, SteppedSubmenu, type SteppedSubmenuStep } from "./settin
 
 const MODEL_PICKER_LAYOUT = { minPrimaryColumnWidth: 12, maxPrimaryColumnWidth: 46 };
 
+const SAVES_IMMEDIATELY_HINT = "Esc to close · Changes save immediately";
+
 const THINKING_DESCRIPTIONS: Record<ThinkingLevel, string> = {
 	off: "No reasoning",
 	minimal: "Very brief reasoning (~1k tokens)",
@@ -184,6 +186,7 @@ class WarningSettingsSubmenu extends Container {
 				}
 			},
 			onCancel,
+			{ cancelHint: SAVES_IMMEDIATELY_HINT },
 		);
 
 		this.addChild(this.settingsList);
@@ -1010,7 +1013,7 @@ export class SettingsSelectorComponent extends Container {
 				}
 			},
 			callbacks.onCancel,
-			{ enableSearch: true },
+			{ enableSearch: true, cancelHint: SAVES_IMMEDIATELY_HINT },
 		);
 
 		this.addChild(this.settingsList);

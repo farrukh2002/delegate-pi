@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import { SettingsList, type SettingsListTheme } from "../src/components/settings-list.ts";
+import { visibleWidth } from "../src/utils.ts";
 
 const testTheme: SettingsListTheme = {
 	label: (text) => text,
@@ -76,5 +77,43 @@ describe("SettingsList", () => {
 		assert.match(list.render(80).join("\n"), /> Setting 11/);
 		list.handleInput("\x1b[5~");
 		assert.match(list.render(80).join("\n"), /> Setting 6/);
+	});
+
+	it("shows Esc to cancel in the hint line by default", () => {
+		const list = new SettingsList(
+			items,
+			10,
+			testTheme,
+			() => {},
+			() => {},
+		);
+
+		assert.match(list.render(80).join("\n"), /Enter\/Space to change · Esc to cancel/);
+	});
+
+	it("shows a custom Esc hint, also with search enabled", () => {
+		const cancelHint = "Esc to close · Changes save immediately";
+		const plain = new SettingsList(
+			items,
+			10,
+			testTheme,
+			() => {},
+			() => {},
+			{ cancelHint },
+		);
+		const searchable = new SettingsList(
+			items,
+			10,
+			testTheme,
+			() => {},
+			() => {},
+			{ enableSearch: true, cancelHint },
+		);
+
+		assert.match(plain.render(80).join("\n"), /Enter\/Space to change · Esc to close · Changes save immediately/);
+		const searchableText = searchable.render(80).join(" ");
+		assert.match(searchableText, /Type to search · Enter\/Space to change · Esc to close · Changes save immediately/);
+		for (const line of searchable.render(80)) assert.ok(visibleWidth(line) <= 80);
+		assert.doesNotMatch(plain.render(80).join("\n"), /Esc to cancel/);
 	});
 });
