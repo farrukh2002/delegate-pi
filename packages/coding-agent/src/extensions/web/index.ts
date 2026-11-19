@@ -26,6 +26,8 @@ import {
 	type WebEngineSearchRequest,
 	type WebEngineSearchResult,
 } from "../../core/web/client.ts";
+import { webRenderers } from "./renderers.ts";
+import type { WebToolSummary } from "./summary.ts";
 
 export const FETCH_TOOL_NAME = "web_fetch";
 export const GIT_INDEX_TOOL_NAME = "git_index";
@@ -422,9 +424,10 @@ function toolErrorFor(error: unknown, fallback: string): string {
 
 function createHttpRequestTool(
 	getClient: () => WebExtensionClient,
-): ToolDefinition<typeof httpRequestSchema, undefined> {
+): ToolDefinition<typeof httpRequestSchema, WebToolSummary | undefined> {
 	return {
 		name: HTTP_REQUEST_TOOL_NAME,
+		...webRenderers,
 		label: HTTP_REQUEST_TOOL_NAME,
 		description: HTTP_REQUEST_DESCRIPTION,
 		promptSnippet: "Make an HTTP or HTTPS API request",
@@ -464,7 +467,8 @@ function createHttpRequestTool(
 			if (signal?.aborted) return errorText(CANCELLED_TEXT);
 			try {
 				const result = await getClient().httpRequest(params, { signal });
-				return { ...text(JSON.stringify(result)), structuredContent: { ...result } };
+				const details: WebToolSummary = { kind: "http", status: result.status, truncated: result.truncated };
+				return { ...text(JSON.stringify(result)), details, structuredContent: { ...result } };
 			} catch (error) {
 				if (signal?.aborted) return errorText(CANCELLED_TEXT);
 				return errorText(toolErrorFor(error, REQUEST_FAILED_TEXT));
@@ -473,9 +477,12 @@ function createHttpRequestTool(
 	};
 }
 
-function createWebFetchTool(getClient: () => WebExtensionClient): ToolDefinition<typeof webFetchSchema, undefined> {
+function createWebFetchTool(
+	getClient: () => WebExtensionClient,
+): ToolDefinition<typeof webFetchSchema, WebToolSummary | undefined> {
 	return {
 		name: FETCH_TOOL_NAME,
+		...webRenderers,
 		label: FETCH_TOOL_NAME,
 		description: WEB_FETCH_DESCRIPTION,
 		promptSnippet: "Retrieve a web page as readable Markdown or text",
@@ -491,7 +498,13 @@ function createWebFetchTool(getClient: () => WebExtensionClient): ToolDefinition
 			if (signal?.aborted) return errorText(CANCELLED_TEXT);
 			try {
 				const result = await getClient().webFetch(params, { signal });
-				return { ...text(JSON.stringify(result)), structuredContent: { ...result } };
+				const details: WebToolSummary = {
+					kind: "fetch",
+					status: result.status,
+					access: result.access,
+					truncated: result.truncated,
+				};
+				return { ...text(JSON.stringify(result)), details, structuredContent: { ...result } };
 			} catch (error) {
 				if (signal?.aborted) return errorText(CANCELLED_TEXT);
 				return errorText(toolErrorFor(error, FETCH_FAILED_TEXT));
@@ -500,9 +513,12 @@ function createWebFetchTool(getClient: () => WebExtensionClient): ToolDefinition
 	};
 }
 
-function createWebSearchTool(getClient: () => WebExtensionClient): ToolDefinition<typeof webSearchSchema, undefined> {
+function createWebSearchTool(
+	getClient: () => WebExtensionClient,
+): ToolDefinition<typeof webSearchSchema, WebToolSummary | undefined> {
 	return {
 		name: WEB_SEARCH_TOOL_NAME,
+		...webRenderers,
 		label: WEB_SEARCH_TOOL_NAME,
 		description: WEB_SEARCH_DESCRIPTION,
 		promptSnippet: "Search the public web",
@@ -517,7 +533,13 @@ function createWebSearchTool(getClient: () => WebExtensionClient): ToolDefinitio
 			if (signal?.aborted) return errorText(CANCELLED_TEXT);
 			try {
 				const result = await getClient().webSearch(params, { signal });
-				return { ...text(JSON.stringify(result)), structuredContent: { ...result } };
+				const details: WebToolSummary = {
+					kind: "search",
+					status: result.status,
+					count: result.results.length,
+					truncated: result.truncated,
+				};
+				return { ...text(JSON.stringify(result)), details, structuredContent: { ...result } };
 			} catch (error) {
 				if (signal?.aborted) return errorText(CANCELLED_TEXT);
 				return errorText(toolErrorFor(error, SEARCH_FAILED_TEXT));
@@ -526,9 +548,12 @@ function createWebSearchTool(getClient: () => WebExtensionClient): ToolDefinitio
 	};
 }
 
-function createGitIndexTool(getClient: () => WebExtensionClient): ToolDefinition<typeof gitIndexSchema, undefined> {
+function createGitIndexTool(
+	getClient: () => WebExtensionClient,
+): ToolDefinition<typeof gitIndexSchema, WebToolSummary | undefined> {
 	return {
 		name: GIT_INDEX_TOOL_NAME,
+		...webRenderers,
 		label: GIT_INDEX_TOOL_NAME,
 		description: GIT_INDEX_DESCRIPTION,
 		promptSnippet: "Index a local or HTTPS Git repository for code search",
@@ -548,7 +573,12 @@ function createGitIndexTool(getClient: () => WebExtensionClient): ToolDefinition
 					{ ...params, source: resolveGitSource(params.source, ctx.cwd) },
 					{ signal },
 				);
-				return { ...text(JSON.stringify(result)), structuredContent: { ...result } };
+				const details: WebToolSummary = {
+					kind: "git_index",
+					status: result.status,
+					filesIndexed: result.filesIndexed,
+				};
+				return { ...text(JSON.stringify(result)), details, structuredContent: { ...result } };
 			} catch (error) {
 				if (signal?.aborted) return errorText(CANCELLED_TEXT);
 				return errorText(toolErrorFor(error, GIT_INDEX_FAILED_TEXT));
@@ -557,9 +587,12 @@ function createGitIndexTool(getClient: () => WebExtensionClient): ToolDefinition
 	};
 }
 
-function createGitSearchTool(getClient: () => WebExtensionClient): ToolDefinition<typeof gitSearchSchema, undefined> {
+function createGitSearchTool(
+	getClient: () => WebExtensionClient,
+): ToolDefinition<typeof gitSearchSchema, WebToolSummary | undefined> {
 	return {
 		name: GIT_SEARCH_TOOL_NAME,
+		...webRenderers,
 		label: GIT_SEARCH_TOOL_NAME,
 		description: GIT_SEARCH_DESCRIPTION,
 		promptSnippet: "Search an indexed Git repository snapshot",
@@ -576,7 +609,14 @@ function createGitSearchTool(getClient: () => WebExtensionClient): ToolDefinitio
 			if (signal?.aborted) return errorText(CANCELLED_TEXT);
 			try {
 				const result = await getClient().gitSearch(params, { signal });
-				return { ...text(JSON.stringify(result)), structuredContent: { ...result } };
+				const details: WebToolSummary = {
+					kind: "git_search",
+					status: result.status,
+					count: result.results.length,
+					partial: result.partial,
+					truncated: result.truncated,
+				};
+				return { ...text(JSON.stringify(result)), details, structuredContent: { ...result } };
 			} catch (error) {
 				if (signal?.aborted) return errorText(CANCELLED_TEXT);
 				return errorText(toolErrorFor(error, GIT_SEARCH_FAILED_TEXT));
@@ -585,9 +625,12 @@ function createGitSearchTool(getClient: () => WebExtensionClient): ToolDefinitio
 	};
 }
 
-function createGitReadTool(getClient: () => WebExtensionClient): ToolDefinition<typeof gitReadSchema, undefined> {
+function createGitReadTool(
+	getClient: () => WebExtensionClient,
+): ToolDefinition<typeof gitReadSchema, WebToolSummary | undefined> {
 	return {
 		name: GIT_READ_TOOL_NAME,
+		...webRenderers,
 		label: GIT_READ_TOOL_NAME,
 		description: GIT_READ_DESCRIPTION,
 		promptSnippet: "Read a file from an indexed Git repository snapshot",
@@ -604,7 +647,15 @@ function createGitReadTool(getClient: () => WebExtensionClient): ToolDefinition<
 			if (signal?.aborted) return errorText(CANCELLED_TEXT);
 			try {
 				const result = await getClient().gitRead(params, { signal });
-				return { ...text(JSON.stringify(result)), structuredContent: { ...result } };
+				const details: WebToolSummary = {
+					kind: "git_read",
+					status: result.status,
+					startLine: result.startLine,
+					endLine: result.endLine,
+					totalLines: result.totalLines,
+					truncated: result.truncated,
+				};
+				return { ...text(JSON.stringify(result)), details, structuredContent: { ...result } };
 			} catch (error) {
 				if (signal?.aborted) return errorText(CANCELLED_TEXT);
 				return errorText(toolErrorFor(error, GIT_READ_FAILED_TEXT));
@@ -615,9 +666,10 @@ function createGitReadTool(getClient: () => WebExtensionClient): ToolDefinition<
 
 function createWebToolsGateway(
 	pi: Pick<ExtensionAPI, "getAllTools">,
-): ToolDefinition<typeof webToolsSchema, undefined> {
+): ToolDefinition<typeof webToolsSchema, WebToolSummary | undefined> {
 	return {
 		name: "web_tools",
+		...webRenderers,
 		label: "Web and Git",
 		description:
 			"Run one operation with args: web_search(query), web_fetch(url), http_request(url), git_index(source), git_search(indexId, query), or git_read(indexId, path). Use describe:true for its full arguments and guidance. Keep maxOutputBytes small. Only GET and HEAD HTTP requests run without user approval.",
@@ -643,7 +695,12 @@ function createWebToolsGateway(
 				);
 			}
 			const { result, isError } = await ctx.executeTool(operation, args ?? {}, { signal });
-			return { content: result.content, details: undefined, structuredContent: result.structuredContent, isError };
+			return {
+				content: result.content,
+				details: result.details,
+				structuredContent: result.structuredContent,
+				isError,
+			};
 		},
 	};
 }

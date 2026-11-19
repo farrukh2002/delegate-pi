@@ -268,7 +268,7 @@ describe("git_index tool", () => {
 		expect(fake.indexCalls[0].options?.signal).toBeUndefined();
 		expect(text(result)).toBe(JSON.stringify(GIT_INDEX_RESULT));
 		expect(result.structuredContent).toEqual(GIT_INDEX_RESULT);
-		expect(result.details).toBeUndefined();
+		expect(result.details).toMatchObject({ kind: "git_index" });
 		expect(result.isError).toBeUndefined();
 	});
 

@@ -76,6 +76,7 @@
 - Fixed the `/resume` header showing "Current Folder" twice and cutting off the title and the sort label in narrow terminals. The title is now "Resume Session", and the scope, name and sort controls move to their own row when they do not fit.
 - Fixed the footer showing an empty context bar with `0.0% of 0 auto` when no model is set. It now shows "No model · /login".
 - Fixed the working indicator always saying "Working". It now shows what the agent does: "Waiting for model", "Thinking", "Writing response", "Preparing tool call", "Running <tool>", and "Waiting for your answer" while a dialog is open. A message set with `setWorkingMessage` still takes priority.
+- Fixed `ask_user`, `web_fetch`, `http_request`, `web_search`, `git_index`, `git_search`, `git_read` and `web_tools` showing raw JSON or the full text meant for the model. Results now show a short label such as "Page fetched · 200 OK", "Found 3 results", "Answered · <answer>" or "Question dismissed". Expand the result to see the raw output. Failed calls still show their error text.
 
 ### Removed
 
