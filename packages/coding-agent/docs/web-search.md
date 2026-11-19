@@ -1,10 +1,10 @@
 # Native web search
 
-## Stage 3 contract
+## Contract
 
-`web_search` is a built-in Pi tool backed by the Rust engine's `web_search` operation. It uses public HTML search endpoints without an API key, Python runtime, MCP server, browser, or external crawler service. Yahoo is tried first, then Brave if Yahoo has no usable results. A successful provider stops the chain. Provider results remain untrusted external content, not agent instructions.
+`web_search` is a built-in Pi tool backed by the Rust engine's `web_search` operation. It calls the keyless search APIs of four providers: Exa, Parallel, Firecrawl, and Tavily. It needs no account, API key, Python runtime, browser, or crawler service. The engine tries the providers in that order, and the first provider with usable results stops the chain. Provider results remain untrusted external content, not agent instructions.
 
-Live checks on this host found relevant Yahoo results for `Rust async book` and `site:doc.rust-lang.org ownership`. Brave returned HTTP 429, DuckDuckGo returned a challenge, and Mojeek returned a CAPTCHA page. These are observations, not provider availability guarantees. Do not treat a challenge page as an empty search.
+These APIs are free tiers that the providers offer to anonymous clients, as the opencode agent uses them. They can change or limit access without notice. Exa has no published limit. Parallel, Firecrawl, and Tavily limit requests per IP address. Firecrawl also refuses IP addresses that look like a VPN or a proxy (HTTP 403). The engine treats each refusal as a failed attempt and moves to the next provider.
 
 ## Parameters
 
@@ -22,65 +22,43 @@ Example:
 ## Result
 
 ```json
-{"query":"ownership","site":"doc.rust-lang.org","status":"ok","results":[{"title":"What is Ownership?","url":"https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html","snippet":"Ownership is a set of rules...","source":"yahoo"}],"attempts":[{"provider":"yahoo","status":"ok"}],"truncated":false}
+{"query":"ownership","site":"doc.rust-lang.org","status":"ok","results":[{"title":"What is Ownership?","url":"https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html","snippet":"Ownership is a set of rules...","source":"exa"}],"attempts":[{"provider":"exa","status":"ok"}],"truncated":false}
 ```
 
-`site` is absent when it was not requested. Result `status` is `ok`, `empty`, or `unavailable`. `ok` has at least one result. `empty` means at least one provider returned a recognized no-results page or all its valid results were outside the requested site, and no provider attempt omitted candidates because of the candidate limit. If no usable results remain after an attempt exceeds that limit, the search returns `unavailable` and `truncated: true`, even if the fallback reports `empty`. An attempt that exceeds the limit without usable results reports `response_limit`, unless the page is identified as blocked. `unavailable` does not prove that no matching pages exist.
+`site` is absent when it was not requested. Result `status` is `ok`, `empty`, or `unavailable`. `ok` has at least one result. `empty` means at least one provider answered with no results, or with results that were all outside the requested site, and no provider attempt omitted candidates because of the candidate limit. If no usable results remain after an attempt exceeds that limit, the search returns `unavailable` and `truncated: true`, even if a later provider reports `empty`. An attempt that exceeds the limit without usable results reports `response_limit`. `unavailable` does not prove that no matching pages exist.
 
-`source` and `provider` are `yahoo` or `brave`. Attempt `status` is one of `ok`, `empty`, `blocked`, `http_error`, `network_error`, `timeout`, `unsupported_response`, or `response_limit`. Attempts are returned in request order. Failures do not expose raw transport errors or challenge HTML. Cancellation and the operation deadline use the existing protocol errors instead of a search result.
+`source` and `provider` are `exa`, `parallel`, `firecrawl`, or `tavily`. Attempt `status` is one of `ok`, `empty`, `blocked`, `http_error`, `network_error`, `timeout`, `unsupported_response`, `response_limit`, or `cooling_down`. Attempts are returned in request order. A failed attempt can also carry `httpStatus`, the HTTP status code of the response that ended it, and `reason`:
 
-Results have plain text titles and snippets. Decode HTML entities, normalize whitespace, exclude ads and provider navigation, unwrap known Yahoo result redirects locally, reject unsafe URLs and embedded credentials, remove fragments and known tracking parameters, and remove duplicate canonical URLs while retaining provider order. Limit each title to 256 UTF-8 bytes, each snippet to 512 bytes, each result URL to 4096 bytes, and parsed candidates to 100. No result URL is fetched by a search operation.
+- `connect`: no connection or no response.
+- `body_read`: the response body could not be read.
+- `provider_error`: the provider answered HTTP 200 with an error, for example a JSON-RPC rate-limit error.
+- `invalid_payload`: the answer was not valid UTF-8, not the expected JSON, or had no result list.
+
+`ok`, `empty`, and `cooling_down` attempts carry neither field. Failures do not expose raw transport errors or provider response bodies. Cancellation and the operation deadline use the existing protocol errors instead of a search result.
+
+Results have plain text titles and snippets. The engine normalizes whitespace, rejects unsafe URLs and embedded credentials, removes fragments and known tracking parameters, and removes duplicate URLs while it keeps provider order. A result with no title shows its host name. Each title is at most 256 UTF-8 bytes, each snippet at most 512 bytes, each result URL at most 4096 bytes, and the engine reads at most 100 candidates from one answer. No result URL is fetched by a search operation.
 
 Set `truncated` when text or URL-count output is shortened, including when results must be removed to fit the output budget. Do not cut through the result JSON. If metadata or even one result cannot fit, return `output_limit` rather than claim the search was empty. Native validation errors use `invalid_params`.
 
-## Network and resource limits
+## Providers
 
-Search uses fixed provider endpoints. Tool arguments cannot choose another provider URL or supply headers, cookies, credentials, proxy settings, or environment variable names. No credential file is read. Queries and site filters are sent to third-party providers; do not include secrets. Only the first result page is requested, so results are not exhaustive. Use a dedicated anonymous persistent HTTP client, verified HTTPS, direct connections, a fixed desktop User-Agent, and English response preferences. Do not persist cookies or follow result links.
+| Provider | Request | Answer |
+| --- | --- | --- |
+| Exa | `POST https://mcp.exa.ai/mcp`, MCP `tools/call` of `web_search_exa` with `query` and `numResults` | Server-sent events or JSON with one text block per result |
+| Parallel | `POST https://search.parallel.ai/mcp`, MCP `tools/call` of `web_search` with `objective` and `search_queries` | `structuredContent.results` with `url`, `title`, and `excerpts` |
+| Firecrawl | `POST https://api.firecrawl.dev/v2/search` with `query` and `limit` | `data.web` with `url`, `title`, and `description` |
+| Tavily | `POST https://api.tavily.com/search` with `query`, `max_results`, and the header `X-Tavily-Access-Mode: keyless` | `results` with `url`, `title`, and `content` |
 
-Each provider has an 8-second timeout covering headers and body, at most 2 MiB of decompressed HTML, and at most 3 HTTPS redirects within its own origin. Reject cross-origin redirects and non-HTML or invalid UTF-8 responses. An overall engine/client timeout can stop the operation sooner. No retries, parallel provider fan-out, or paid fallback is used. The first response-body overflow stops that attempt; partial HTML is not parsed as a complete result page.
+A request sends no cookies, credentials, or session. MCP answers carry either an `error` object or `isError: true` for a refusal; the engine reports both as `blocked` with `provider_error`.
 
-## Reuse and source review
+## Cooldown and limits
 
-Provider request shapes, organic-result selectors, and Yahoo redirect decoding are adapted from DDGS:
+Tool arguments cannot choose a provider URL or supply headers, credentials, or proxy settings. No credential file is read. Queries and site filters are sent to third-party providers; do not include secrets. Only the first result page is requested, so results are not exhaustive. The engine uses one anonymous HTTP client with verified HTTPS, direct connections, no redirects, and the User-Agent `pi-web/<version>`.
 
-- <https://github.com/deedy5/ddgs/blob/main/ddgs/engines/yahoo.py>, reviewed file blob `41bad72a05ec6b42b69f43cebbc6a3d42421a36d`.
-- <https://github.com/deedy5/ddgs/blob/main/ddgs/engines/brave.py>, reviewed file blob `060150d52e4acfe76141d5e30c54f6c4c754e721`.
+A provider that answers HTTP 202, 403, or 429, a `provider_error`, or any HTTP 5xx is put on a 60-second cooldown. During the cooldown the search skips it and records a `cooling_down` attempt. Other failures, such as a timeout, an empty answer, or an invalid payload, do not start a cooldown. The cooldown lives in memory for the engine process and is shared by all searches of that process.
 
-The engine uses the MIT-licensed `dom_query` Rust library for HTML parsing and CSS selection. It does not implement an HTML parser. SearXNG is a design reference for distinguishing access failures from empty results; no AGPL source is copied.
-
-The pinned HTML/CSS dependency tree also includes these unmodified MPL-2.0 components. They retain their own license, not Pi's MIT license. Their source packages, including upstream notices, are available here:
-
-- `selectors` 0.41.0: <https://crates.io/api/v1/crates/selectors/0.41.0/download>
-- `cssparser` 0.38.0: <https://crates.io/api/v1/crates/cssparser/0.38.0/download>
-- `cssparser-macros` 0.7.1: <https://crates.io/api/v1/crates/cssparser-macros/0.7.1/download>
-- `dtoa-short` 0.3.5: <https://crates.io/api/v1/crates/dtoa-short/0.3.5/download>
-
-The Mozilla Public License 2.0 is available at <https://mozilla.org/MPL/2.0/>. Keep this license and source-availability information with distributions of the helper. `html5ever`, `markup5ever`, and `percent-encoding` are dual MIT/Apache-2.0.
-
-DDGS license notice follows. Keep this notice with distributions that contain these adapters. Pi packages include this document with their docs.
-
-MIT License
-
-Copyright (c) 2022 deedy5
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Each provider has an 8-second timeout covering headers and body, and one search stops asking providers after 20 seconds in total. An answer is at most 2 MiB; the first overflow stops that attempt and the partial body is not parsed. An overall engine and client timeout can stop the operation sooner. There is no retry on the same provider, no parallel fan-out, and no paid fallback.
 
 ## Verification
 
-Deterministic tests use local HTTP servers and small synthetic HTML fixtures, not live providers. Cover parameter bounds, provider request encoding, HTML/entity extraction, redirect decoding, URL safety, deduplication, enforced site filtering, ads, no-results markers, challenge responses, markup changes, fallback, timeouts, cancellation, concurrency, download limits, and encoded output limits. TypeScript tests cover wire validation, lazy engine ownership, structured output, and shutdown. A separate manual live smoke checks relevance; it is not a CI gate and must not log full HTML.
+Deterministic tests use local HTTP servers and small synthetic answers in each provider's format, not live providers. They cover parameter bounds, each provider's request shape, answer decoding, provider errors, URL safety, deduplication, enforced site filtering, fallback, cooldown, timeouts, cancellation, download limits, and encoded output limits. TypeScript tests cover wire validation, lazy engine ownership, structured output, and shutdown. A separate manual live smoke checks relevance; it is not a CI gate.

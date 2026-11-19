@@ -40,10 +40,10 @@ const SEARCH_RESULT: WebEngineSearchResult = {
 			title: "What is Ownership?",
 			url: "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html",
 			snippet: "Ownership is a set of rules.",
-			source: "yahoo",
+			source: "exa",
 		},
 	],
-	attempts: [{ provider: "yahoo", status: "ok" }],
+	attempts: [{ provider: "exa", status: "ok" }],
 	truncated: false,
 };
 
@@ -233,7 +233,7 @@ describe("web_search tool", () => {
 			query: "rust",
 			status,
 			results: [],
-			attempts: [{ provider: "yahoo", status: status === "empty" ? "empty" : "blocked" }],
+			attempts: [{ provider: "exa", status: status === "empty" ? "empty" : "blocked" }],
 			truncated: false,
 		};
 		const fake = fakeClient(async () => outcome);
