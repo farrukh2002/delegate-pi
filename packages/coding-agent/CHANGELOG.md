@@ -75,6 +75,7 @@
 - Fixed the Settings hint saying "Esc to cancel" although changes in Settings are saved when you make them. It now says "Esc to close · Changes save immediately".
 - Fixed the `/resume` header showing "Current Folder" twice and cutting off the title and the sort label in narrow terminals. The title is now "Resume Session", and the scope, name and sort controls move to their own row when they do not fit.
 - Fixed the footer showing an empty context bar with `0.0% of 0 auto` when no model is set. It now shows "No model · /login".
+- Fixed the working indicator always saying "Working". It now shows what the agent does: "Waiting for model", "Thinking", "Writing response", "Preparing tool call", "Running <tool>", and "Waiting for your answer" while a dialog is open. A message set with `setWorkingMessage` still takes priority.
 
 ### Removed
 

@@ -213,6 +213,7 @@ describe("InteractiveMode compaction events", () => {
 			activeStatusIndicator: undefined,
 			workingVisible: true,
 			showWorkingStatusIndicator: vi.fn(),
+			setWorkingPhase: vi.fn(),
 			clearStatusIndicator: vi.fn(),
 			settingsManager: { getShowTerminalProgress: () => true },
 			ui: { requestRender: vi.fn(), terminal: { setProgress: vi.fn() } },
