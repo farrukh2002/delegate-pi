@@ -1,36 +1,50 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use reqwest::header::{CONTENT_TYPE, LOCATION};
 use reqwest::{Client, Url};
 use serde::Serialize;
 use serde_json::Value;
+use tokio::time::Instant;
 
 use crate::engine::{OperationFuture, OperationOutcome};
-use crate::http_target::{raw_has_userinfo, same_origin};
+use crate::http_target::raw_has_userinfo;
 use crate::protocol::ErrorCode;
 
-mod providers;
+mod api;
 #[cfg(test)]
 mod tests;
 
-use providers::parse;
-
-const MAX_HTML_BYTES: usize = 2 * 1024 * 1024;
+const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
+const MAX_CANDIDATES: usize = 100;
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(8);
-const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const SEARCH_BUDGET: Duration = Duration::from_secs(20);
+const COOLDOWN: Duration = Duration::from_secs(60);
+const USER_AGENT: &str = concat!("pi-web/", env!("CARGO_PKG_VERSION"));
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum Provider {
-    Yahoo,
-    Brave,
+    Exa,
+    Parallel,
+    Firecrawl,
+    Tavily,
 }
 
 impl Provider {
+    const ALL: [Provider; 4] = [
+        Provider::Exa,
+        Provider::Parallel,
+        Provider::Firecrawl,
+        Provider::Tavily,
+    ];
+
     fn endpoint(self) -> &'static str {
         match self {
-            Provider::Yahoo => "https://search.yahoo.com/search",
-            Provider::Brave => "https://search.brave.com/search",
+            Provider::Exa => "https://mcp.exa.ai/mcp",
+            Provider::Parallel => "https://search.parallel.ai/mcp",
+            Provider::Firecrawl => "https://api.firecrawl.dev/v2/search",
+            Provider::Tavily => "https://api.tavily.com/search",
         }
     }
 }
@@ -46,6 +60,38 @@ enum AttemptStatus {
     Timeout,
     UnsupportedResponse,
     ResponseLimit,
+    CoolingDown,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Reason {
+    Connect,
+    BodyRead,
+    ProviderError,
+    InvalidPayload,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Failure {
+    status: AttemptStatus,
+    http_status: Option<u16>,
+    reason: Option<Reason>,
+}
+
+impl Failure {
+    fn new(status: AttemptStatus, http_status: Option<u16>, reason: Option<Reason>) -> Self {
+        Failure {
+            status,
+            http_status,
+            reason,
+        }
+    }
+
+    fn needs_cooldown(&self) -> bool {
+        self.status == AttemptStatus::Blocked
+            || self.http_status.is_some_and(|status| status >= 500)
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -56,10 +102,61 @@ struct SearchItem {
     source: Provider,
 }
 
+struct Candidate {
+    url: String,
+    title: String,
+    snippet: String,
+}
+
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Attempt {
     provider: Provider,
     status: AttemptStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    http_status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<Reason>,
+}
+
+impl Attempt {
+    fn new(provider: Provider, status: AttemptStatus) -> Self {
+        Attempt {
+            provider,
+            status,
+            http_status: (status == AttemptStatus::ResponseLimit).then_some(200),
+            reason: None,
+        }
+    }
+
+    fn failed(provider: Provider, failure: Failure) -> Self {
+        Attempt {
+            provider,
+            status: failure.status,
+            http_status: failure.http_status,
+            reason: failure.reason,
+        }
+    }
+}
+
+#[derive(Default)]
+struct Cooldowns(Mutex<HashMap<Provider, Instant>>);
+
+impl Cooldowns {
+    fn active(&self, provider: Provider) -> bool {
+        self.0
+            .lock()
+            .unwrap()
+            .get(&provider)
+            .is_some_and(|until| *until > Instant::now())
+    }
+
+    fn start(&self, provider: Provider) {
+        self.0
+            .lock()
+            .unwrap()
+            .insert(provider, Instant::now() + COOLDOWN);
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -151,7 +248,8 @@ fn normalize_site(value: &Value) -> Result<String, ErrorCode> {
 
 pub struct SearchHandler {
     client: Client,
-    endpoints: [(Provider, Url); 2],
+    endpoints: Vec<(Provider, Url)>,
+    cooldowns: Arc<Cooldowns>,
 }
 
 impl SearchHandler {
@@ -162,16 +260,19 @@ impl SearchHandler {
                 .no_proxy()
                 .user_agent(USER_AGENT)
                 .build()?,
-            endpoints: [Provider::Yahoo, Provider::Brave]
-                .map(|provider| (provider, Url::parse(provider.endpoint()).unwrap())),
+            endpoints: Provider::ALL
+                .map(|provider| (provider, Url::parse(provider.endpoint()).unwrap()))
+                .to_vec(),
+            cooldowns: Arc::default(),
         })
     }
 
     pub(crate) fn start(&self, params: Option<Value>) -> OperationFuture {
         let client = self.client.clone();
         let endpoints = self.endpoints.clone();
+        let cooldowns = Arc::clone(&self.cooldowns);
         Box::pin(async move {
-            match execute(&client, &endpoints, params).await {
+            match execute(&client, &endpoints, &cooldowns, params).await {
                 Ok(result) => OperationOutcome::Result(result),
                 Err(error) => OperationOutcome::Error(error),
             }
@@ -181,7 +282,8 @@ impl SearchHandler {
 
 async fn execute(
     client: &Client,
-    endpoints: &[(Provider, Url); 2],
+    endpoints: &[(Provider, Url)],
+    cooldowns: &Cooldowns,
     params: Option<Value>,
 ) -> Result<Value, ErrorCode> {
     let params = SearchParams::parse(params)?;
@@ -193,21 +295,43 @@ async fn execute(
         attempts: Vec::new(),
         truncated: false,
     };
+    let started = Instant::now();
     for (provider, endpoint) in endpoints {
+        if cooldowns.active(*provider) {
+            result
+                .attempts
+                .push(Attempt::new(*provider, AttemptStatus::CoolingDown));
+            continue;
+        }
+        let Some(remaining) = SEARCH_BUDGET
+            .checked_sub(started.elapsed())
+            .filter(|remaining| !remaining.is_zero())
+        else {
+            break;
+        };
         let attempt = tokio::time::timeout(
-            PROVIDER_TIMEOUT,
-            fetch(client, *provider, endpoint.clone(), &params),
+            remaining.min(PROVIDER_TIMEOUT),
+            fetch(client, *provider, endpoint, &params),
         )
         .await;
-        let (status, items, truncated) = match attempt {
-            Ok(Ok(parsed)) => parsed,
-            Ok(Err(status)) => (status, Vec::new(), false),
-            Err(_) => (AttemptStatus::Timeout, Vec::new(), false),
+        let (attempt, items, truncated) = match attempt {
+            Ok(Ok((status, items, truncated))) => {
+                (Attempt::new(*provider, status), items, truncated)
+            }
+            Ok(Err(failure)) => {
+                if failure.needs_cooldown() {
+                    cooldowns.start(*provider);
+                }
+                (Attempt::failed(*provider, failure), Vec::new(), false)
+            }
+            Err(_) => (
+                Attempt::failed(*provider, Failure::new(AttemptStatus::Timeout, None, None)),
+                Vec::new(),
+                false,
+            ),
         };
-        result.attempts.push(Attempt {
-            provider: *provider,
-            status,
-        });
+        let status = attempt.status;
+        result.attempts.push(attempt);
         result.truncated |= truncated;
         if status == AttemptStatus::Empty {
             result.status = "empty";
@@ -237,134 +361,108 @@ async fn execute(
 async fn fetch(
     client: &Client,
     provider: Provider,
-    mut url: Url,
+    url: &Url,
     params: &SearchParams,
-) -> Result<(AttemptStatus, Vec<SearchItem>, bool), AttemptStatus> {
-    match provider {
-        Provider::Yahoo => {
-            url.query_pairs_mut()
-                .append_pair("p", &params.provider_query());
-        }
-        Provider::Brave => {
-            url.query_pairs_mut()
-                .append_pair("q", &params.provider_query())
-                .append_pair("source", "web");
-        }
+) -> Result<(AttemptStatus, Vec<SearchItem>, bool), Failure> {
+    let mut response = api::request(client, provider, url.clone(), params)
+        .send()
+        .await
+        .map_err(|_| Failure::new(AttemptStatus::NetworkError, None, Some(Reason::Connect)))?;
+    let status = response.status().as_u16();
+    if matches!(status, 202 | 403 | 429) {
+        return Err(Failure::new(AttemptStatus::Blocked, Some(status), None));
     }
-    for redirects in 0..=3 {
-        let mut response = client
-            .get(url.clone())
-            .header("Accept", "text/html")
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .send()
-            .await
-            .map_err(|_| AttemptStatus::NetworkError)?;
-        let status = response.status().as_u16();
-        if matches!(status, 301 | 302 | 303 | 307 | 308) {
-            let location = response
-                .headers()
-                .get(LOCATION)
-                .and_then(|v| v.to_str().ok())
-                .ok_or(AttemptStatus::UnsupportedResponse)?;
-            if redirects == 3 || raw_has_userinfo(location) {
-                return Err(AttemptStatus::UnsupportedResponse);
-            }
-            let next = url
-                .join(location)
-                .map_err(|_| AttemptStatus::UnsupportedResponse)?;
-            if !same_origin(&url, &next)
-                || next.as_str().len() > 4096
-                || !next.username().is_empty()
-                || next.password().is_some()
-            {
-                return Err(AttemptStatus::UnsupportedResponse);
-            }
-            url = next;
-            continue;
-        }
-        if matches!(status, 202 | 403 | 429) {
-            return Err(AttemptStatus::Blocked);
-        }
-        if status != 200 {
-            return Err(AttemptStatus::HttpError);
-        }
-        let content_type = response
-            .headers()
-            .get(CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if !matches!(
-            content_type.split(';').next().unwrap_or("").trim(),
-            "text/html" | "application/xhtml+xml"
-        ) || content_type
-            .split(';')
-            .skip(1)
-            .filter_map(|part| part.split_once('='))
-            .any(|(name, value)| {
-                name.trim() == "charset"
-                    && !matches!(
-                        value.trim().trim_matches('"'),
-                        "utf-8" | "utf8" | "us-ascii"
-                    )
-            })
-        {
-            return Err(AttemptStatus::UnsupportedResponse);
-        }
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|_| AttemptStatus::NetworkError)?
-        {
-            if chunk.len() > MAX_HTML_BYTES - bytes.len() {
-                return Err(AttemptStatus::ResponseLimit);
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        let html = std::str::from_utf8(&bytes).map_err(|_| AttemptStatus::UnsupportedResponse)?;
-        return Ok(parse(
-            provider,
-            html,
-            params.site.as_deref(),
-            params.max_results,
-        ));
+    if status != 200 {
+        return Err(Failure::new(AttemptStatus::HttpError, Some(status), None));
     }
-    Err(AttemptStatus::UnsupportedResponse)
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|_| {
+        Failure::new(
+            AttemptStatus::NetworkError,
+            Some(status),
+            Some(Reason::BodyRead),
+        )
+    })? {
+        if chunk.len() > MAX_BODY_BYTES - bytes.len() {
+            return Err(Failure::new(
+                AttemptStatus::ResponseLimit,
+                Some(status),
+                None,
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let body = std::str::from_utf8(&bytes).map_err(|_| {
+        Failure::new(
+            AttemptStatus::UnsupportedResponse,
+            Some(status),
+            Some(Reason::InvalidPayload),
+        )
+    })?;
+    api::decode(provider, body, params.site.as_deref(), params.max_results)
 }
 
-fn result_url(provider: Provider, raw: &str) -> Option<Url> {
+fn collect(
+    provider: Provider,
+    candidates: Vec<Candidate>,
+    site: Option<&str>,
+    max_results: usize,
+) -> (AttemptStatus, Vec<SearchItem>, bool) {
+    let candidate_limit_reached = candidates.len() > MAX_CANDIDATES;
+    let mut truncated = candidate_limit_reached;
+    let mut seen = HashSet::new();
+    let mut items = Vec::new();
+    for candidate in candidates.into_iter().take(MAX_CANDIDATES) {
+        let Some(url) = result_url(&candidate.url) else {
+            continue;
+        };
+        if site.is_some_and(|site| {
+            !url.host_str()
+                .is_some_and(|host| host == site || host.ends_with(&format!(".{site}")))
+        }) {
+            continue;
+        }
+        if !seen.insert(url.as_str().to_string()) {
+            continue;
+        }
+        if items.len() == max_results {
+            truncated = true;
+            break;
+        }
+        let (title, title_cut) = plain_text(&candidate.title, 256);
+        let title = if title.is_empty() {
+            url.host_str().unwrap_or_default().to_string()
+        } else {
+            title
+        };
+        let (snippet, _) = plain_text(&candidate.snippet, 512);
+        truncated |= title_cut;
+        items.push(SearchItem {
+            title,
+            url: url.into(),
+            snippet,
+            source: provider,
+        });
+    }
+    let status = if !items.is_empty() {
+        AttemptStatus::Ok
+    } else if candidate_limit_reached {
+        AttemptStatus::ResponseLimit
+    } else {
+        AttemptStatus::Empty
+    };
+    (status, items, truncated)
+}
+
+fn result_url(raw: &str) -> Option<Url> {
     if raw.len() > 16384 || raw_has_userinfo(raw) {
         return None;
     }
     let mut url = Url::parse(raw).ok()?;
-    if provider == Provider::Yahoo && url.host_str() == Some("r.search.yahoo.com") {
-        let encoded = url
-            .path()
-            .split_once("/RU=")?
-            .1
-            .split("/RK=")
-            .next()?
-            .split("/RS=")
-            .next()?;
-        let encoded = encoded.replace('+', " ");
-        let decoded = percent_encoding::percent_decode_str(&encoded)
-            .decode_utf8()
-            .ok()?;
-        if raw_has_userinfo(&decoded) {
-            return None;
-        }
-        url = Url::parse(&decoded).ok()?;
-    }
     if !matches!(url.scheme(), "http" | "https")
         || url.host_str().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
-        || matches!(
-            url.host_str(),
-            Some("search.yahoo.com" | "r.search.yahoo.com" | "search.brave.com")
-        )
-        || url.host_str() == Some("www.bing.com") && matches!(url.path(), "/aclick" | "/ck/a")
     {
         return None;
     }

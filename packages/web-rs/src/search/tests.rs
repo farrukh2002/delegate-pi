@@ -2,36 +2,84 @@ use super::*;
 use crate::engine::{Engine, ExitReason, OperationHandler};
 use crate::frame_reader::{FrameReader, LineRead};
 use serde_json::json;
-use std::io::Write;
 use tokio::io::{duplex, AsyncWriteExt};
 
 #[path = "../../tests/support/mod.rs"]
 mod support;
 use support::{TestResponse, TestServer};
 
-fn html(body: &str) -> TestResponse {
-    TestResponse::bytes(200, "text/html; charset=utf-8", body.as_bytes().to_vec())
+type Entry<'a> = (&'a str, &'a str, &'a str);
+
+fn exa_body(entries: &[Entry]) -> String {
+    let text = entries
+        .iter()
+        .map(|(url, title, snippet)| {
+            format!(
+                "Title: {title}\nURL: {url}\nPublished: N/A\nAuthor: N/A\nHighlights:\n{snippet}"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n---\n\n");
+    let envelope =
+        json!({"result":{"content":[{"type":"text","text":text}]},"jsonrpc":"2.0","id":1});
+    format!("event: message\ndata: {envelope}\n\n")
 }
 
-fn yahoo(url: &str, title: &str, snippet: &str) -> String {
-    format!(
-        r#"<div class="algo relsrch"><div class="compTitle"><a href="{url}"><h3>{title}</h3></a></div><div class="compText"><p>{snippet}</p></div></div>"#
-    )
+fn parallel_body(entries: &[Entry]) -> String {
+    let results = entries
+        .iter()
+        .map(|(url, title, snippet)| {
+            json!({"url":url,"title":title,"publish_date":null,"excerpts":[snippet, "more"]})
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "jsonrpc":"2.0","id":1,
+        "result":{"content":[{"text":"{}","type":"text"}],"structuredContent":{"results":results}}
+    })
+    .to_string()
 }
 
-fn brave(url: &str, title: &str, snippet: &str) -> String {
-    format!(
-        r#"<div data-type="web"><a href="{url}"><div class="title">{title}</div></a><div class="snippet"><div class="content">{snippet}</div></div></div>"#
-    )
+fn firecrawl_body(entries: &[Entry]) -> String {
+    let web = entries
+        .iter()
+        .map(|(url, title, snippet)| json!({"url":url,"title":title,"description":snippet}))
+        .collect::<Vec<_>>();
+    json!({"success":true,"data":{"web":web}}).to_string()
 }
 
-fn handler(first: &TestServer, second: &TestServer) -> SearchHandler {
+fn tavily_body(entries: &[Entry]) -> String {
+    let results = entries
+        .iter()
+        .map(|(url, title, snippet)| json!({"url":url,"title":title,"content":snippet}))
+        .collect::<Vec<_>>();
+    json!({"query":"q","results":results}).to_string()
+}
+
+fn body(provider: Provider, entries: &[Entry]) -> String {
+    match provider {
+        Provider::Exa => exa_body(entries),
+        Provider::Parallel => parallel_body(entries),
+        Provider::Firecrawl => firecrawl_body(entries),
+        Provider::Tavily => tavily_body(entries),
+    }
+}
+
+fn ok(provider: Provider, entries: &[Entry]) -> TestResponse {
+    let content_type = match provider {
+        Provider::Exa => "text/event-stream",
+        _ => "application/json",
+    };
+    TestResponse::bytes(200, content_type, body(provider, entries).into_bytes())
+}
+
+fn handler(servers: &[(Provider, &TestServer)]) -> SearchHandler {
     SearchHandler {
         client: SearchHandler::new().unwrap().client,
-        endpoints: [
-            (Provider::Yahoo, Url::parse(first.url()).unwrap()),
-            (Provider::Brave, Url::parse(second.url()).unwrap()),
-        ],
+        endpoints: servers
+            .iter()
+            .map(|(provider, server)| (*provider, Url::parse(server.url()).unwrap()))
+            .collect(),
+        cooldowns: Arc::default(),
     }
 }
 
@@ -41,6 +89,12 @@ async fn result(handler: &SearchHandler, params: Value) -> Result<Value, ErrorCo
         OperationOutcome::Error(code) => Err(code),
     }
 }
+
+fn decode(provider: Provider, entries: &[Entry], site: Option<&str>, max: usize) -> Decoded {
+    api::decode(provider, &body(provider, entries), site, max).unwrap()
+}
+
+type Decoded = (AttemptStatus, Vec<SearchItem>, bool);
 
 #[test]
 fn validates_search_parameters_and_normalizes_sites() {
@@ -105,78 +159,75 @@ fn validates_search_parameters_and_normalizes_sites() {
 }
 
 #[test]
-fn extracts_entities_titles_and_snippets_for_both_providers() {
-    for (provider, body) in [
-        (
-            Provider::Yahoo,
-            yahoo(
-                "https://example.com/a?utm_source=x&amp;k=1#part",
-                "A &amp; <b>B</b>",
-                " A\n <b>useful</b> &lt;snippet&gt; ",
-            ),
-        ),
-        (
-            Provider::Brave,
-            brave(
-                "https://example.com/a?utm_source=x&amp;k=1#part",
-                "A &amp; <b>B</b>",
-                " A\n <b>useful</b> &lt;snippet&gt; ",
-            ),
-        ),
-    ] {
-        let (status, items, truncated) = parse(provider, &body, None, 5);
+fn decodes_each_provider_into_the_same_item_shape() {
+    for provider in Provider::ALL {
+        let (status, items, truncated) = decode(
+            provider,
+            &[(
+                "https://example.com/a?utm_source=x&k=1#part",
+                " A   B ",
+                "useful text",
+            )],
+            None,
+            5,
+        );
         assert_eq!(status, AttemptStatus::Ok);
-        assert_eq!(items[0].title, "A & B");
-        assert_eq!(items[0].snippet, "A useful <snippet>");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "A B");
         assert_eq!(items[0].url, "https://example.com/a?k=1");
+        assert!(items[0].snippet.starts_with("useful text"));
+        assert_eq!(items[0].source, provider);
         assert!(!truncated);
     }
 }
 
 #[test]
-fn unwraps_yahoo_links_and_rejects_unsafe_or_provider_links() {
-    let raw = "https://r.search.yahoo.com/_ylt=token/RU=https%3a%2f%2fexample.com%2fa%3fq%3da%252Bb/RK=2/RS=token";
-    assert_eq!(
-        result_url(Provider::Yahoo, raw).unwrap().as_str(),
-        "https://example.com/a?q=a%2Bb"
-    );
+fn decodes_exa_answers_sent_as_plain_json_and_missing_titles() {
+    let text = "Title: N/A\nURL: https://example.com/x\nHighlights:\ntext";
+    let plain = json!({"result":{"content":[{"type":"text","text":text}]}}).to_string();
+    let (status, items, _) = api::decode(Provider::Exa, &plain, None, 5).unwrap();
+    assert_eq!(status, AttemptStatus::Ok);
+    assert_eq!(items[0].title, "example.com");
+    assert_eq!(items[0].snippet, "text");
+}
+
+#[test]
+fn rejects_unsafe_result_urls_and_strips_tracking() {
     for raw in [
         "javascript:alert(1)",
         "file:///etc/passwd",
         "/relative",
         "https://user:password@example.com",
         "https://@example.com/",
-        "https://search.yahoo.com/search?p=x",
-        "https://www.bing.com/aclick?x=y",
-        "https://r.search.yahoo.com/broken",
-        "https://r.search.yahoo.com/RU=https%3a%2f%2fuser%3apass%40example.com/RK=x",
-        "https://r.search.yahoo.com/RU=%ff/RK=x",
+        &format!("https://example.com/{}", "x".repeat(4096)),
     ] {
-        assert!(result_url(Provider::Yahoo, raw).is_none(), "{raw}");
+        assert!(result_url(raw).is_none(), "{raw}");
     }
-    assert!(result_url(
-        Provider::Brave,
-        &format!("https://example.com/{}", "x".repeat(4096))
-    )
-    .is_none());
     let raw = "https://example.com/a?token=A%20B&empty&x=%2f";
-    assert_eq!(result_url(Provider::Yahoo, raw).unwrap().as_str(), raw);
+    assert_eq!(result_url(raw).unwrap().as_str(), raw);
+    assert_eq!(
+        result_url("https://example.com/a?gclid=1&utm_medium=x&k=v#f")
+            .unwrap()
+            .as_str(),
+        "https://example.com/a?k=v"
+    );
 }
 
 #[test]
 fn deduplicates_and_preserves_order_with_bounded_text() {
-    let body = [
-        yahoo("https://example.com/a#one", "First", &"é".repeat(500)),
-        yahoo(
+    let long = "é".repeat(500);
+    let title = "é".repeat(200);
+    let entries = [
+        ("https://example.com/a#one", "First", long.as_str()),
+        (
             "https://example.com/a?utm_source=x#two",
             "Duplicate",
             "duplicate",
         ),
-        yahoo("https://example.com/b", &"é".repeat(200), "second"),
-        yahoo("https://example.com/c", "Third", "third"),
-    ]
-    .concat();
-    let (status, items, truncated) = parse(Provider::Yahoo, &body, None, 2);
+        ("https://example.com/b", title.as_str(), "second"),
+        ("https://example.com/c", "Third", "third"),
+    ];
+    let (status, items, truncated) = decode(Provider::Tavily, &entries, None, 2);
     assert_eq!(status, AttemptStatus::Ok);
     assert_eq!(items.len(), 2);
     assert_eq!(items[0].title, "First");
@@ -188,235 +239,328 @@ fn deduplicates_and_preserves_order_with_bounded_text() {
 
 #[test]
 fn filters_site_by_hostname_boundary_not_substring() {
-    let body = [
-        yahoo("https://example.com/a", "Root", ""),
-        yahoo("https://docs.example.com/b", "Subdomain", ""),
-        yahoo("https://evil-example.com/c", "Wrong", ""),
-        yahoo("https://example.com.evil.org/d", "Wrong", ""),
-    ]
-    .concat();
-    let (_, items, _) = parse(Provider::Yahoo, &body, Some("example.com"), 10);
+    let entries = [
+        ("https://example.com/a", "Root", ""),
+        ("https://docs.example.com/b", "Subdomain", ""),
+        ("https://evil-example.com/c", "Wrong", ""),
+        ("https://example.com.evil.org/d", "Wrong", ""),
+    ];
+    let (_, items, _) = decode(Provider::Firecrawl, &entries, Some("example.com"), 10);
     assert_eq!(items.len(), 2);
-    let (status, items, _) = parse(Provider::Yahoo, &body, Some("not.example.org"), 10);
+    let (status, items, _) = decode(Provider::Firecrawl, &entries, Some("not.example.org"), 10);
     assert_eq!(status, AttemptStatus::Empty);
     assert!(items.is_empty());
 }
 
-#[tokio::test]
-async fn does_not_claim_empty_when_the_candidate_limit_hides_a_match() {
-    let wrong_site = yahoo("https://other.example/result", "Wrong site", "");
-    let match_after_cap = yahoo("https://example.com/result", "Match", "");
-    let first =
-        TestServer::start(move |_| html(&format!("{}{}", wrong_site.repeat(100), match_after_cap)));
-    let second = TestServer::start(|_| html("<body>No results found</body>"));
-    let result = result(
-        &handler(&first, &second),
-        json!({"query": "docs", "site": "example.com"}),
-    )
-    .await
-    .unwrap();
-    assert_eq!(result["status"], "unavailable");
-    assert_eq!(result["attempts"][0]["status"], "response_limit");
-    assert_eq!(result["truncated"], true);
-    assert_eq!(result["results"], json!([]));
+#[test]
+fn does_not_claim_empty_when_the_candidate_limit_hides_a_match() {
+    let wrong = ("https://other.example/result", "Wrong site", "");
+    let mut entries = vec![wrong; 100];
+    entries.push(("https://example.com/result", "Match", ""));
+    let (status, items, truncated) = decode(Provider::Tavily, &entries, Some("example.com"), 5);
+    assert_eq!(status, AttemptStatus::ResponseLimit);
+    assert!(items.is_empty());
+    assert!(truncated);
 }
 
 #[test]
-fn distinguishes_empty_challenge_and_changed_markup() {
-    for (provider, body, expected) in [
-        (
-            Provider::Yahoo,
-            "<body>We did not find results for that query</body>",
-            AttemptStatus::Empty,
-        ),
-        (
-            Provider::Brave,
-            "<body>No results found</body>",
-            AttemptStatus::Empty,
-        ),
-        (
-            Provider::Yahoo,
-            "<title>Captcha</title><form action='/captcha'></form>",
-            AttemptStatus::Blocked,
-        ),
-        (
-            Provider::Brave,
-            "<form id='challenge-form'></form>",
-            AttemptStatus::Blocked,
-        ),
-        (
-            Provider::Yahoo,
-            "<body>Different markup</body>",
-            AttemptStatus::UnsupportedResponse,
-        ),
-    ] {
-        assert_eq!(parse(provider, body, None, 5).0, expected);
+fn reports_provider_errors_and_malformed_payloads() {
+    let rpc_error = json!({"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"rate limit"}});
+    let tool_error = json!({"result":{"content":[{"type":"text","text":"no"}],"isError":true}});
+    let failure = |provider, body: &str| api::decode(provider, body, None, 5).unwrap_err();
+    for provider in [Provider::Exa, Provider::Parallel] {
+        for body in [rpc_error.to_string(), tool_error.to_string()] {
+            let failure = failure(provider, &body);
+            assert_eq!(failure.status, AttemptStatus::Blocked);
+            assert_eq!(failure.http_status, Some(200));
+            assert_eq!(failure.reason, Some(Reason::ProviderError));
+        }
     }
-    let organic = yahoo(
-        "https://example.com",
-        "CAPTCHA documentation",
-        "CAPTCHA support",
-    );
-    assert_eq!(
-        parse(Provider::Yahoo, &organic, None, 5).0,
-        AttemptStatus::Ok
-    );
-}
-
-#[test]
-fn excludes_ads_scripts_and_invalid_results() {
-    let body = format!(
-        "{}{}{}{}",
-        yahoo("https://ads.example.com", "Ad", "ad")
-            .replace("algo relsrch", "algo relsrch sponsored"),
-        yahoo("javascript:alert(1)", "Bad", "bad"),
-        yahoo(
-            "https://example.com",
-            "<script>secret</script>Good",
-            "<style>noise</style>Text"
-        ),
-        "<a href='https://navigation.example.com'>Navigation</a>"
-    );
-    let (_, items, _) = parse(Provider::Yahoo, &body, None, 5);
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0].title, "Good");
-    assert_eq!(items[0].snippet, "Text");
+    let refused = failure(Provider::Firecrawl, r#"{"success":false,"error":"x"}"#);
+    assert_eq!(refused.status, AttemptStatus::Blocked);
+    assert_eq!(refused.reason, Some(Reason::ProviderError));
+    for (provider, body) in [
+        (Provider::Exa, "not json"),
+        (Provider::Exa, "event: message\n\n"),
+        (Provider::Parallel, r#"{"result":{"content":[]}}"#),
+        (Provider::Firecrawl, "<html></html>"),
+        (Provider::Firecrawl, r#"{"success":true}"#),
+        (Provider::Tavily, r#"{"detail":{"error":"x"}}"#),
+    ] {
+        let failure = failure(provider, body);
+        assert_eq!(failure.status, AttemptStatus::UnsupportedResponse, "{body}");
+        assert_eq!(failure.reason, Some(Reason::InvalidPayload));
+    }
 }
 
 #[tokio::test]
-async fn encodes_queries_and_stops_after_first_success() {
-    let first = TestServer::start(|_| html(&yahoo("https://example.com/rust", "Rust", "text")));
-    let second = TestServer::start(|_| html("unused"));
+async fn sends_the_documented_request_to_each_provider() {
+    for provider in Provider::ALL {
+        let server = TestServer::start(move |_| ok(provider, &[("https://example.com", "T", "s")]));
+        let value = result(
+            &handler(&[(provider, &server)]),
+            json!({"query":"a & b","site":"EXAMPLE.COM","maxResults":3}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(value["status"], "ok");
+        assert_eq!(value["site"], "example.com");
+        assert_eq!(value["results"][0]["source"], json!(provider));
+        let request = &server.requests()[0];
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.headers["user-agent"], USER_AGENT);
+        assert_eq!(request.headers["content-type"], "application/json");
+        assert!(!request.headers.contains_key("authorization"));
+        assert!(!request.headers.contains_key("cookie"));
+        let sent: Value = serde_json::from_slice(&request.body).unwrap();
+        let text = sent.to_string();
+        assert!(text.contains("a & b site:example.com"), "{text}");
+        match provider {
+            Provider::Exa => {
+                assert_eq!(sent["method"], "tools/call");
+                assert_eq!(sent["params"]["name"], "web_search_exa");
+                assert_eq!(sent["params"]["arguments"]["numResults"], 3);
+                assert_eq!(
+                    request.headers["accept"],
+                    "application/json, text/event-stream"
+                );
+            }
+            Provider::Parallel => {
+                assert_eq!(sent["params"]["name"], "web_search");
+                assert_eq!(
+                    sent["params"]["arguments"]["search_queries"],
+                    json!(["a & b site:example.com"])
+                );
+            }
+            Provider::Firecrawl => assert_eq!(sent["limit"], 3),
+            Provider::Tavily => {
+                assert_eq!(sent["max_results"], 3);
+                assert_eq!(request.headers["x-tavily-access-mode"], "keyless");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn stops_after_the_first_provider_with_results() {
+    let first = TestServer::start(|_| ok(Provider::Exa, &[("https://example.com", "T", "s")]));
+    let second = TestServer::start(|_| TestResponse::text(500, "unused"));
     let value = result(
-        &handler(&first, &second),
-        json!({"query":"a & b", "site":"EXAMPLE.COM"}),
+        &handler(&[(Provider::Exa, &first), (Provider::Parallel, &second)]),
+        json!({"query":"rust"}),
     )
     .await
     .unwrap();
-    assert_eq!(value["status"], "ok");
-    assert_eq!(value["site"], "example.com");
-    assert_eq!(
-        value["attempts"],
-        json!([{"provider":"yahoo","status":"ok"}])
-    );
-    let requests = first.requests();
-    assert_eq!(requests[0].method, "GET");
-    assert_eq!(requests[0].path, "/?p=a+%26+b+site%3Aexample.com");
-    assert_eq!(requests[0].headers["user-agent"], USER_AGENT);
-    assert!(!requests[0].headers.contains_key("authorization"));
-    assert!(!requests[0].headers.contains_key("cookie"));
+    assert_eq!(value["attempts"], json!([{"provider":"exa","status":"ok"}]));
     assert!(second.requests().is_empty());
 }
 
 #[tokio::test]
 async fn invalid_params_never_reach_a_provider() {
-    let first = TestServer::start(|_| html("unused"));
-    let second = TestServer::start(|_| html("unused"));
+    let server = TestServer::start(|_| TestResponse::text(500, "unused"));
     assert_eq!(
-        result(&handler(&first, &second), json!({"query":""})).await,
+        result(&handler(&[(Provider::Exa, &server)]), json!({"query":""})).await,
         Err(ErrorCode::InvalidParams)
     );
-    assert!(first.requests().is_empty() && second.requests().is_empty());
+    assert!(server.requests().is_empty());
 }
 
 #[tokio::test]
-async fn falls_back_on_blocking_errors_and_empty_responses() {
-    for (status, body, expected) in [
-        (429, "blocked", "blocked"),
-        (202, "challenge", "blocked"),
-        (403, "denied", "blocked"),
-        (503, "unavailable", "http_error"),
-        (200, "<title>Captcha</title>", "blocked"),
-        (200, "<body>We did not find results for x</body>", "empty"),
-        (200, "<body>changed markup</body>", "unsupported_response"),
+async fn falls_back_on_failures_and_reports_each_attempt() {
+    let rpc_error = json!({"jsonrpc":"2.0","id":1,"error":{"message":"limit"}}).to_string();
+    let empty = parallel_body(&[]);
+    for (status, content_type, payload, expected) in [
+        (
+            429,
+            "text/plain",
+            "x".to_string(),
+            json!({"status":"blocked","httpStatus":429}),
+        ),
+        (
+            202,
+            "text/plain",
+            "x".to_string(),
+            json!({"status":"blocked","httpStatus":202}),
+        ),
+        (
+            403,
+            "text/plain",
+            "x".to_string(),
+            json!({"status":"blocked","httpStatus":403}),
+        ),
+        (
+            503,
+            "text/plain",
+            "x".to_string(),
+            json!({"status":"http_error","httpStatus":503}),
+        ),
+        (
+            302,
+            "text/plain",
+            "x".to_string(),
+            json!({"status":"http_error","httpStatus":302}),
+        ),
+        (
+            200,
+            "application/json",
+            rpc_error,
+            json!({"status":"blocked","httpStatus":200,"reason":"provider_error"}),
+        ),
+        (
+            200,
+            "application/json",
+            "<html>".to_string(),
+            json!({"status":"unsupported_response","httpStatus":200,"reason":"invalid_payload"}),
+        ),
+        (
+            200,
+            "application/json",
+            empty.clone(),
+            json!({"status":"empty"}),
+        ),
     ] {
         let first = TestServer::start(move |_| {
-            TestResponse::bytes(status, "text/html", body.as_bytes().to_vec())
+            TestResponse::bytes(status, content_type, payload.clone().into_bytes())
         });
-        let second = TestServer::start(|_| html(&brave("https://example.com", "Found", "text")));
-        let value = result(&handler(&first, &second), json!({"query":"rust"}))
-            .await
-            .unwrap();
+        let second =
+            TestServer::start(|_| ok(Provider::Tavily, &[("https://example.com", "Found", "s")]));
+        let search = handler(&[(Provider::Parallel, &first), (Provider::Tavily, &second)]);
+        let value = result(&search, json!({"query":"rust"})).await.unwrap();
         assert_eq!(value["status"], "ok");
+        let mut first_attempt = json!({"provider":"parallel"});
+        first_attempt
+            .as_object_mut()
+            .unwrap()
+            .extend(expected.as_object().unwrap().clone());
         assert_eq!(
             value["attempts"],
-            json!([{"provider":"yahoo","status":expected},{"provider":"brave","status":"ok"}])
+            json!([first_attempt, {"provider":"tavily","status":"ok"}])
         );
-        assert_eq!(second.requests()[0].path, "/?q=rust&source=web");
     }
+}
+
+#[tokio::test]
+async fn skips_a_blocked_provider_while_it_cools_down() {
+    let first = TestServer::start(|_| TestResponse::text(429, "slow down"));
+    let second =
+        TestServer::start(|_| ok(Provider::Tavily, &[("https://example.com", "Found", "s")]));
+    let search = handler(&[(Provider::Firecrawl, &first), (Provider::Tavily, &second)]);
+    let value = result(&search, json!({"query":"rust"})).await.unwrap();
+    assert_eq!(value["attempts"][0]["status"], "blocked");
+    let value = result(&search, json!({"query":"rust again"}))
+        .await
+        .unwrap();
+    assert_eq!(
+        value["attempts"],
+        json!([
+            {"provider":"firecrawl","status":"cooling_down"},
+            {"provider":"tavily","status":"ok"}
+        ])
+    );
+    assert_eq!(first.requests().len(), 1);
+    assert_eq!(second.requests().len(), 2);
+}
+
+#[tokio::test(start_paused = true)]
+async fn asks_a_provider_again_after_its_cooldown() {
+    let cooldowns = Cooldowns::default();
+    assert!(!cooldowns.active(Provider::Exa));
+    cooldowns.start(Provider::Exa);
+    assert!(cooldowns.active(Provider::Exa));
+    assert!(!cooldowns.active(Provider::Tavily));
+    tokio::time::advance(COOLDOWN + Duration::from_secs(1)).await;
+    assert!(!cooldowns.active(Provider::Exa));
+}
+
+#[tokio::test]
+async fn does_not_cool_down_providers_that_only_found_nothing() {
+    let first = TestServer::start(|_| ok(Provider::Tavily, &[]));
+    let search = handler(&[(Provider::Tavily, &first)]);
+    for _ in 0..2 {
+        let value = result(&search, json!({"query":"rust"})).await.unwrap();
+        assert_eq!(value["status"], "empty");
+    }
+    assert_eq!(first.requests().len(), 2);
 }
 
 #[tokio::test]
 async fn distinguishes_total_unavailability_from_valid_empty_results() {
-    let first = TestServer::start(|_| html("<body>We did not find results for x</body>"));
+    let first = TestServer::start(|_| ok(Provider::Tavily, &[]));
     let second = TestServer::start(|_| TestResponse::text(429, "blocked"));
-    let value = result(&handler(&first, &second), json!({"query":"rust"}))
-        .await
-        .unwrap();
+    let value = result(
+        &handler(&[(Provider::Tavily, &first), (Provider::Firecrawl, &second)]),
+        json!({"query":"rust"}),
+    )
+    .await
+    .unwrap();
     assert_eq!(value["status"], "empty");
     assert_eq!(value["results"], json!([]));
     let first = TestServer::start(|_| TestResponse::text(429, "blocked"));
-    let value = result(&handler(&first, &second), json!({"query":"rust"}))
-        .await
-        .unwrap();
+    let value = result(
+        &handler(&[(Provider::Tavily, &first), (Provider::Firecrawl, &second)]),
+        json!({"query":"rust"}),
+    )
+    .await
+    .unwrap();
     assert_eq!(value["status"], "unavailable");
 }
 
 #[tokio::test]
-async fn rejects_non_html_charsets_and_invalid_utf8() {
-    for (content_type, body) in [
-        ("application/json", b"{}".to_vec()),
-        ("text/html; charset=latin-1", b"text".to_vec()),
-        ("text/html; charset=utf-8-invalid", b"text".to_vec()),
-        ("text/html", vec![0xff]),
-    ] {
-        let first =
-            TestServer::start(move |_| TestResponse::bytes(200, content_type, body.clone()));
-        let second = TestServer::start(|_| html(&brave("https://example.com", "Found", "")));
-        let value = result(&handler(&first, &second), json!({"query":"rust"}))
-            .await
-            .unwrap();
-        assert_eq!(value["attempts"][0]["status"], "unsupported_response");
-        assert_eq!(value["status"], "ok");
-    }
+async fn rejects_invalid_utf8() {
+    let first = TestServer::start(|_| TestResponse::bytes(200, "application/json", vec![0xff]));
+    let second =
+        TestServer::start(|_| ok(Provider::Tavily, &[("https://example.com", "Found", "s")]));
+    let value = result(
+        &handler(&[(Provider::Firecrawl, &first), (Provider::Tavily, &second)]),
+        json!({"query":"rust"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        value["attempts"][0],
+        json!({"provider":"firecrawl","status":"unsupported_response","httpStatus":200,"reason":"invalid_payload"})
+    );
+    assert_eq!(value["status"], "ok");
 }
 
 #[tokio::test]
-async fn bounds_decompressed_html_and_does_not_parse_partial_pages() {
-    let body = format!(
-        "{}{}",
-        yahoo("https://example.com", "Prefix", ""),
-        "x".repeat(MAX_HTML_BYTES)
-    );
-    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-    encoder.write_all(body.as_bytes()).unwrap();
-    let gzip = encoder.finish().unwrap();
-    let first = TestServer::start(move |_| {
-        TestResponse::bytes(200, "text/html", gzip.clone()).header("Content-Encoding", "gzip")
+async fn bounds_the_response_body() {
+    let big = vec![b' '; MAX_BODY_BYTES + 1];
+    let first =
+        TestServer::start(move |_| TestResponse::bytes(200, "application/json", big.clone()));
+    let second = TestServer::start(|_| {
+        ok(
+            Provider::Tavily,
+            &[("https://example.org", "Fallback", "s")],
+        )
     });
-    let second = TestServer::start(|_| html(&brave("https://example.org", "Fallback", "")));
-    let value = result(&handler(&first, &second), json!({"query":"rust"}))
-        .await
-        .unwrap();
+    let value = result(
+        &handler(&[(Provider::Firecrawl, &first), (Provider::Tavily, &second)]),
+        json!({"query":"rust"}),
+    )
+    .await
+    .unwrap();
     assert_eq!(value["attempts"][0]["status"], "response_limit");
     assert_eq!(value["results"][0]["title"], "Fallback");
 }
 
 #[tokio::test]
 async fn bounds_encoded_output_without_claiming_empty() {
-    let body = (0..10)
-        .map(|i| {
-            yahoo(
-                &format!("https://example.com/{i}"),
-                &"é".repeat(128),
-                &"\\\"".repeat(400),
-            )
-        })
-        .collect::<String>();
-    let first = TestServer::start(move |_| html(&body));
-    let second = TestServer::start(|_| html("unused"));
+    let title = "é".repeat(128);
+    let snippet = "\\\"".repeat(400);
+    let urls = (0..10)
+        .map(|i| format!("https://example.com/{i}"))
+        .collect::<Vec<_>>();
+    let entries = urls
+        .iter()
+        .map(|url| (url.as_str(), title.as_str(), snippet.as_str()))
+        .collect::<Vec<_>>();
+    let payload = tavily_body(&entries);
+    let first = TestServer::start(move |_| {
+        TestResponse::bytes(200, "application/json", payload.clone().into_bytes())
+    });
     let value = result(
-        &handler(&first, &second),
+        &handler(&[(Provider::Tavily, &first)]),
         json!({"query":"rust","maxResults":10,"maxOutputBytes":2048}),
     )
     .await
@@ -424,16 +568,11 @@ async fn bounds_encoded_output_without_claiming_empty() {
     assert_eq!(value["status"], "ok");
     assert_eq!(value["truncated"], true);
     assert!(serde_json::to_vec(&value).unwrap().len() <= 2048);
-    let first = TestServer::start(|_| {
-        html(&yahoo(
-            &format!("https://example.com/{}", "x".repeat(2000)),
-            "Long",
-            "",
-        ))
-    });
+    let long = format!("https://example.com/{}", "x".repeat(2000));
+    let first = TestServer::start(move |_| ok(Provider::Tavily, &[(long.as_str(), "Long", "")]));
     assert_eq!(
         result(
-            &handler(&first, &second),
+            &handler(&[(Provider::Tavily, &first)]),
             json!({"query":"rust","maxOutputBytes":1024})
         )
         .await,
@@ -442,50 +581,43 @@ async fn bounds_encoded_output_without_claiming_empty() {
 }
 
 #[tokio::test]
-async fn follows_only_same_origin_bounded_redirects_without_cookies() {
-    let first = TestServer::start(|request| {
-        if request.path.starts_with("/landing") {
-            assert!(!request.headers.contains_key("cookie"));
-            html(&yahoo("https://example.com", "Found", ""))
-        } else {
-            let mut response = html("")
-                .header("Location", "/landing")
-                .header("Set-Cookie", "secret=never-send");
-            response.status = 302;
-            response
-        }
-    });
-    let second = TestServer::start(|_| html("unused"));
+async fn reports_a_connection_failure_with_its_reason() {
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/", closed.local_addr().unwrap());
+    drop(closed);
+    let second =
+        TestServer::start(|_| ok(Provider::Tavily, &[("https://example.com", "Found", "s")]));
+    let search = SearchHandler {
+        client: SearchHandler::new().unwrap().client,
+        endpoints: vec![
+            (Provider::Exa, Url::parse(&url).unwrap()),
+            (Provider::Tavily, Url::parse(second.url()).unwrap()),
+        ],
+        cooldowns: Arc::default(),
+    };
+    let value = result(&search, json!({"query":"rust"})).await.unwrap();
     assert_eq!(
-        result(&handler(&first, &second), json!({"query":"rust"}))
-            .await
-            .unwrap()["status"],
-        "ok"
+        value["attempts"][0],
+        json!({"provider":"exa","status":"network_error","reason":"connect"})
     );
-    let target = TestServer::start(|_| html("must not fetch"));
-    let location = target.url().to_string();
-    let first =
-        TestServer::start(move |_| TestResponse::text(302, "").header("Location", &location));
-    let value = result(&handler(&first, &second), json!({"query":"rust"}))
-        .await
-        .unwrap();
-    assert_eq!(value["attempts"][0]["status"], "unsupported_response");
-    assert!(target.requests().is_empty());
-    let first = TestServer::start(|_| TestResponse::text(302, "").header("Location", "/loop"));
-    let value = result(&handler(&first, &second), json!({"query":"rust"}))
-        .await
-        .unwrap();
-    assert_eq!(value["attempts"][0]["status"], "unsupported_response");
-    assert_eq!(first.requests().len(), 4);
+    assert_eq!(value["status"], "ok");
 }
 
 #[tokio::test]
 async fn provider_timeout_leaves_time_for_fallback() {
-    let first = TestServer::start(|_| html("late").delay(Duration::from_secs(9)));
-    let second = TestServer::start(|_| html(&brave("https://example.com", "Fallback", "")));
-    let value = result(&handler(&first, &second), json!({"query":"rust"}))
-        .await
-        .unwrap();
+    let first = TestServer::start(|_| ok(Provider::Exa, &[]).delay(Duration::from_secs(9)));
+    let second = TestServer::start(|_| {
+        ok(
+            Provider::Tavily,
+            &[("https://example.com", "Fallback", "s")],
+        )
+    });
+    let value = result(
+        &handler(&[(Provider::Exa, &first), (Provider::Tavily, &second)]),
+        json!({"query":"rust"}),
+    )
+    .await
+    .unwrap();
     assert_eq!(value["attempts"][0]["status"], "timeout");
     assert_eq!(value["status"], "ok");
 }
@@ -502,17 +634,23 @@ impl OperationHandler for SearchHandler {
 #[tokio::test]
 async fn protocol_cancellation_keeps_other_searches_alive_and_stops_fallback() {
     let first = TestServer::start(|request| {
-        if request.path.contains("slow") {
-            html("late").delay(Duration::from_secs(5))
+        let query = String::from_utf8_lossy(&request.body);
+        if query.contains("slow") {
+            ok(Provider::Tavily, &[]).delay(Duration::from_secs(5))
         } else {
-            html(&yahoo("https://example.com", "Fast", ""))
+            ok(Provider::Tavily, &[("https://example.com", "Fast", "s")])
         }
     });
-    let second = TestServer::start(|_| html("must not fetch"));
+    let second = TestServer::start(|_| TestResponse::text(500, "must not fetch"));
     let (engine_input, mut input) = duplex(1 << 20);
     let (output, engine_output) = duplex(1 << 20);
-    let engine =
-        tokio::spawn(Engine::new(handler(&first, &second)).run(engine_input, engine_output));
+    let engine = tokio::spawn(
+        Engine::new(handler(&[
+            (Provider::Tavily, &first),
+            (Provider::Firecrawl, &second),
+        ]))
+        .run(engine_input, engine_output),
+    );
     let mut output = FrameReader::new(output);
     async fn receive(output: &mut FrameReader<tokio::io::DuplexStream>) -> Value {
         match output.next_frame().await {
@@ -529,7 +667,11 @@ async fn protocol_cancellation_keeps_other_searches_alive_and_stops_fallback() {
             .unwrap();
     }
     for _ in 0..1000 {
-        if first.requests().iter().any(|r| r.path.contains("slow")) {
+        if first
+            .requests()
+            .iter()
+            .any(|r| String::from_utf8_lossy(&r.body).contains("slow"))
+        {
             break;
         }
         tokio::time::sleep(Duration::from_millis(2)).await;

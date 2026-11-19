@@ -90,19 +90,25 @@ export interface WebEngineFetchResult {
 	bytesReceived: number;
 }
 
-export type WebEngineSearchProvider = "yahoo" | "brave";
+export const WEB_ENGINE_SEARCH_PROVIDERS = ["exa", "parallel", "firecrawl", "tavily"] as const;
+
+export type WebEngineSearchProvider = (typeof WEB_ENGINE_SEARCH_PROVIDERS)[number];
 
 export type WebEngineSearchStatus = "ok" | "empty" | "unavailable";
 
-export type WebEngineSearchAttemptStatus =
-	| "ok"
-	| "empty"
-	| "blocked"
-	| "http_error"
-	| "network_error"
-	| "timeout"
-	| "unsupported_response"
-	| "response_limit";
+export const WEB_ENGINE_SEARCH_ATTEMPT_STATUSES = [
+	"ok",
+	"empty",
+	"blocked",
+	"http_error",
+	"network_error",
+	"timeout",
+	"unsupported_response",
+	"response_limit",
+	"cooling_down",
+] as const;
+
+export type WebEngineSearchAttemptStatus = (typeof WEB_ENGINE_SEARCH_ATTEMPT_STATUSES)[number];
 
 export interface WebEngineSearchRequest {
 	query: string;
@@ -118,9 +124,15 @@ export type WebEngineSearchResultItem = {
 	source: WebEngineSearchProvider;
 };
 
+export const WEB_ENGINE_SEARCH_ATTEMPT_REASONS = ["connect", "body_read", "provider_error", "invalid_payload"] as const;
+
+export type WebEngineSearchAttemptReason = (typeof WEB_ENGINE_SEARCH_ATTEMPT_REASONS)[number];
+
 export type WebEngineSearchAttempt = {
 	provider: WebEngineSearchProvider;
 	status: WebEngineSearchAttemptStatus;
+	httpStatus?: number;
+	reason?: WebEngineSearchAttemptReason;
 };
 
 export interface WebEngineSearchResult {
@@ -1009,7 +1021,11 @@ function parseSearchResult(value: unknown): WebEngineSearchResult {
 	if (status !== "ok" && results.length > 0) {
 		throw new WebEngineError("protocol_error", "Web engine search result has results for a non-ok status");
 	}
-	if (!Array.isArray(value.attempts) || value.attempts.length < 1 || value.attempts.length > 2) {
+	if (
+		!Array.isArray(value.attempts) ||
+		value.attempts.length < 1 ||
+		value.attempts.length > WEB_ENGINE_SEARCH_PROVIDERS.length
+	) {
 		throw new WebEngineError("protocol_error", "Web engine search result has invalid attempts");
 	}
 	const attempts = value.attempts.map(parseSearchAttempt);
@@ -1049,7 +1065,28 @@ function parseSearchAttempt(value: unknown): WebEngineSearchAttempt {
 	if (!isRecord(value)) {
 		throw new WebEngineError("protocol_error", "Web engine search result has an invalid attempt");
 	}
-	return { provider: parseSearchProvider(value.provider), status: parseSearchAttemptStatus(value.status) };
+	const attempt: WebEngineSearchAttempt = {
+		provider: parseSearchProvider(value.provider),
+		status: parseSearchAttemptStatus(value.status),
+	};
+	if (value.httpStatus !== undefined) attempt.httpStatus = parseSearchAttemptHttpStatus(value.httpStatus);
+	if (value.reason !== undefined) attempt.reason = parseSearchAttemptReason(value.reason);
+	return attempt;
+}
+
+function parseSearchAttemptHttpStatus(value: unknown): number {
+	if (typeof value !== "number" || !Number.isInteger(value) || value < 100 || value > 599) {
+		throw new WebEngineError("protocol_error", "Web engine search result has an invalid attempt HTTP status");
+	}
+	return value;
+}
+
+function parseSearchAttemptReason(value: unknown): WebEngineSearchAttemptReason {
+	const reason = WEB_ENGINE_SEARCH_ATTEMPT_REASONS.find((candidate) => candidate === value);
+	if (reason === undefined) {
+		throw new WebEngineError("protocol_error", "Web engine search result has an invalid attempt reason");
+	}
+	return reason;
 }
 
 function parseSearchSite(value: unknown): string {
@@ -1087,29 +1124,19 @@ function parseSearchStatus(value: unknown): WebEngineSearchStatus {
 }
 
 function parseSearchProvider(value: unknown): WebEngineSearchProvider {
-	switch (value) {
-		case "yahoo":
-		case "brave":
-			return value;
-		default:
-			throw new WebEngineError("protocol_error", "Web engine search result has an invalid provider");
+	const provider = WEB_ENGINE_SEARCH_PROVIDERS.find((candidate) => candidate === value);
+	if (provider === undefined) {
+		throw new WebEngineError("protocol_error", "Web engine search result has an invalid provider");
 	}
+	return provider;
 }
 
 function parseSearchAttemptStatus(value: unknown): WebEngineSearchAttemptStatus {
-	switch (value) {
-		case "ok":
-		case "empty":
-		case "blocked":
-		case "http_error":
-		case "network_error":
-		case "timeout":
-		case "unsupported_response":
-		case "response_limit":
-			return value;
-		default:
-			throw new WebEngineError("protocol_error", "Web engine search result has an invalid attempt status");
+	const status = WEB_ENGINE_SEARCH_ATTEMPT_STATUSES.find((candidate) => candidate === value);
+	if (status === undefined) {
+		throw new WebEngineError("protocol_error", "Web engine search result has an invalid attempt status");
 	}
+	return status;
 }
 
 function parseGitIndexResult(value: unknown): WebEngineGitIndexResult {

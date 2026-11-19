@@ -449,16 +449,16 @@ describe("search requests", () => {
 					title: "Rust async book",
 					url: "https://doc.rust-lang.org/book/ch17-00-async-await.html",
 					snippet: "Asynchronous programming in Rust.",
-					source: "yahoo",
+					source: "exa",
 				},
 				{
 					title: "Async Rust",
 					url: "https://doc.rust-lang.org/async/",
 					snippet: "Async support in the standard library.",
-					source: "yahoo",
+					source: "exa",
 				},
 			],
-			attempts: [{ provider: "yahoo", status: "ok" }],
+			attempts: [{ provider: "exa", status: "ok" }],
 			truncated: false,
 		});
 		expect(JSON.parse(readLines(log)[0] ?? "null")).toMatchObject({
@@ -504,7 +504,7 @@ describe("search requests", () => {
 				query: "rust",
 				status,
 				results: [],
-				attempts: [{ provider: "yahoo", status: status === "empty" ? "empty" : "blocked" }],
+				attempts: [{ provider: "exa", status: status === "empty" ? "empty" : "blocked" }],
 				truncated: false,
 			};
 			vi.stubEnv("PI_WEB_TEST_SEARCH_RESULT", JSON.stringify(result));
@@ -513,18 +513,36 @@ describe("search requests", () => {
 		}
 	});
 
+	test("keeps the HTTP status and reason of a failed attempt", async () => {
+		const result = {
+			query: "rust",
+			status: "unavailable",
+			results: [],
+			attempts: [
+				{ provider: "exa", status: "network_error", reason: "connect" },
+				{ provider: "parallel", status: "blocked", httpStatus: 200, reason: "provider_error" },
+				{ provider: "firecrawl", status: "unsupported_response", httpStatus: 200, reason: "invalid_payload" },
+				{ provider: "tavily", status: "blocked", httpStatus: 429 },
+			],
+			truncated: false,
+		};
+		vi.stubEnv("PI_WEB_TEST_SEARCH_RESULT", JSON.stringify(result));
+		const client = createClient({ binaryPath: fixture("search.mjs") });
+		await expect(client.webSearch({ query: "rust" })).resolves.toEqual(result);
+	});
+
 	test("rejects an invalid search result frame", async () => {
 		const item = {
 			title: "Rust async book",
 			url: "https://rust-lang.github.io/async-book/",
 			snippet: "Asynchronous programming in Rust.",
-			source: "yahoo",
+			source: "exa",
 		};
 		const base = {
 			query: "rust async",
 			status: "ok",
 			results: [item],
-			attempts: [{ provider: "yahoo", status: "ok" }],
+			attempts: [{ provider: "exa", status: "ok" }],
 			truncated: false,
 		};
 		const cases: [Record<string, unknown>, RegExp][] = [
@@ -537,10 +555,19 @@ describe("search requests", () => {
 			[{ ...base, results: [{ ...item, url: "ftp://example.com/" }] }, /unsafe URL/],
 			[{ ...base, results: [{ ...item, url: "https://user:pass@example.com/" }] }, /unsafe URL/],
 			[{ ...base, results: [{ ...item, url: "/relative" }] }, /invalid URL/],
-			[{ ...base, attempts: [{ provider: "yahoo", status: "captcha" }] }, /invalid attempt status/],
+			[{ ...base, attempts: [{ provider: "exa", status: "captcha" }] }, /invalid attempt status/],
+			[
+				{ ...base, attempts: [{ provider: "exa", status: "blocked", httpStatus: 99 }] },
+				/invalid attempt HTTP status/,
+			],
+			[
+				{ ...base, attempts: [{ provider: "exa", status: "blocked", httpStatus: "429" }] },
+				/invalid attempt HTTP status/,
+			],
+			[{ ...base, attempts: [{ provider: "exa", status: "blocked", reason: "captcha" }] }, /invalid attempt reason/],
 			[{ ...base, attempts: "none" }, /invalid attempts/],
 			[{ ...base, attempts: [] }, /invalid attempts/],
-			[{ ...base, attempts: Array.from({ length: 3 }, () => base.attempts[0]) }, /invalid attempts/],
+			[{ ...base, attempts: Array.from({ length: 5 }, () => base.attempts[0]) }, /invalid attempts/],
 			[{ ...base, results: Array.from({ length: 11 }, () => item) }, /invalid results/],
 			[{ ...base, results: [{ ...item, title: "é".repeat(129) }] }, /no title/],
 			[{ ...base, results: [{ ...item, snippet: "é".repeat(257) }] }, /no snippet/],

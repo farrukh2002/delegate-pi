@@ -24,16 +24,16 @@ function defaultResult(message) {
 				title: "Rust async book",
 				url: "https://doc.rust-lang.org/book/ch17-00-async-await.html",
 				snippet: "Asynchronous programming in Rust.",
-				source: "yahoo",
+				source: "exa",
 			},
 			{
 				title: "Async Rust",
 				url: "https://doc.rust-lang.org/async/",
 				snippet: "Async support in the standard library.",
-				source: "yahoo",
+				source: "exa",
 			},
 		],
-		attempts: [{ provider: "yahoo", status: "ok" }],
+		attempts: [{ provider: "exa", status: "ok" }],
 		truncated: false,
 	};
 	if (typeof message.params?.site === "string") result.site = message.params.site;

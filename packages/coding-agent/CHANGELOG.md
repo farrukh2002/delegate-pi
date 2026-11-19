@@ -16,7 +16,7 @@
 ### Added
 
 - Added `deepseek-v4.1-flash` and `deepseek-v4.1-flash-1017` to the Qwen Token Plan Individual providers, and per-plan key variables `QWEN_TOKEN_PLAN_TEAM_API_KEY`, `QWEN_TOKEN_PLAN_TEAM_CN_API_KEY`, `QWEN_TOKEN_PLAN_INDIVIDUAL_API_KEY`, and `QWEN_TOKEN_PLAN_INDIVIDUAL_CN_API_KEY`; the shared `QWEN_TOKEN_PLAN_API_KEY` and `QWEN_TOKEN_PLAN_CN_API_KEY` still work ([#11773](https://github.com/earendil-works/pi/issues/11773))
-- Added the Linux [native web tools](docs/web-engine.md) for HTTP requests, web search, page retrieval, and Git indexing, search, and reads. Git reads can resume within long UTF-8 lines. Rebuild any version 1 Git index before use.
+- Added the Linux [native web tools](docs/web-engine.md) for HTTP requests, web search, page retrieval, and Git indexing, search, and reads. Web search uses the keyless search APIs of Exa, Parallel, Firecrawl, and Tavily, so it needs no account or key; a provider that is blocked or rate limited is skipped for 60 seconds, and each failed attempt reports `httpStatus` and `reason`. Git reads can resume within long UTF-8 lines. Rebuild any version 1 Git index before use.
 - Added normalized `trace.jsonl` files for delegated children and exposed their location as `tracePath`.
 - Added delegate turn limits, a context-budget warning before the hard stop, and a guard against repeated tool calls. Use `delegate_tasks` with `steer` to give a running Pi child a new instruction.
 - Added `pi.appendUsage()` to record model usage outside the conversation. Delegate tasks use it to record child usage in the parent session.

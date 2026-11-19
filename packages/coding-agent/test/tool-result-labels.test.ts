@@ -179,8 +179,8 @@ describe("web tools attach a summary for the result label", () => {
 					query: "q",
 					status: "ok",
 					results: [
-						{ title: "t", url: "https://example.com", snippet: "s", source: "yahoo" },
-						{ title: "u", url: "https://example.org", snippet: "s", source: "brave" },
+						{ title: "t", url: "https://example.com", snippet: "s", source: "exa" },
+						{ title: "u", url: "https://example.org", snippet: "s", source: "tavily" },
 					],
 					attempts: [],
 					truncated: true,

@@ -3,6 +3,9 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { type Static, Type } from "typebox";
 import type { ExtensionAPI, ExtensionFactory, ToolDefinition } from "../../core/extensions/types.ts";
 import {
+	WEB_ENGINE_SEARCH_ATTEMPT_REASONS,
+	WEB_ENGINE_SEARCH_ATTEMPT_STATUSES,
+	WEB_ENGINE_SEARCH_PROVIDERS,
 	WebEngineClient,
 	WebEngineError,
 	type WebEngineFetchOptions,
@@ -22,7 +25,10 @@ import {
 	type WebEngineHttpOptions,
 	type WebEngineHttpRequest,
 	type WebEngineHttpResult,
+	type WebEngineSearchAttemptReason,
+	type WebEngineSearchAttemptStatus,
 	type WebEngineSearchOptions,
+	type WebEngineSearchProvider,
 	type WebEngineSearchRequest,
 	type WebEngineSearchResult,
 } from "../../core/web/client.ts";
@@ -345,22 +351,17 @@ const webSearchOutputSchema = Type.Object({
 			title: Type.String(),
 			url: Type.String(),
 			snippet: Type.String(),
-			source: Type.Union([Type.Literal("yahoo"), Type.Literal("brave")]),
+			source: Type.Unsafe<WebEngineSearchProvider>(StringEnum(WEB_ENGINE_SEARCH_PROVIDERS)),
 		}),
 	),
 	attempts: Type.Array(
 		Type.Object({
-			provider: Type.Union([Type.Literal("yahoo"), Type.Literal("brave")]),
-			status: Type.Union([
-				Type.Literal("ok"),
-				Type.Literal("empty"),
-				Type.Literal("blocked"),
-				Type.Literal("http_error"),
-				Type.Literal("network_error"),
-				Type.Literal("timeout"),
-				Type.Literal("unsupported_response"),
-				Type.Literal("response_limit"),
-			]),
+			provider: Type.Unsafe<WebEngineSearchProvider>(StringEnum(WEB_ENGINE_SEARCH_PROVIDERS)),
+			status: Type.Unsafe<WebEngineSearchAttemptStatus>(StringEnum(WEB_ENGINE_SEARCH_ATTEMPT_STATUSES)),
+			httpStatus: Type.Optional(Type.Integer()),
+			reason: Type.Optional(
+				Type.Unsafe<WebEngineSearchAttemptReason>(StringEnum(WEB_ENGINE_SEARCH_ATTEMPT_REASONS)),
+			),
 		}),
 	),
 	truncated: Type.Boolean(),

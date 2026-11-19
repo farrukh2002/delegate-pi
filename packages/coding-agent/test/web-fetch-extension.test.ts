@@ -39,10 +39,10 @@ const SEARCH_RESULT: WebEngineSearchResult = {
 			title: "What is Ownership?",
 			url: "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html",
 			snippet: "Ownership is a set of rules.",
-			source: "yahoo",
+			source: "exa",
 		},
 	],
-	attempts: [{ provider: "yahoo", status: "ok" }],
+	attempts: [{ provider: "exa", status: "ok" }],
 	truncated: false,
 };
 
