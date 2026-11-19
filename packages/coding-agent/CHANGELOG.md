@@ -141,6 +141,9 @@
 - The llama.cpp extension now connects to `http://127.0.0.1:9931` by default, the current llama-server default port, instead of port 8080 ([#12001](https://github.com/earendil-works/pi/pull/12001) by [@julien-c](https://github.com/julien-c))
 - Anthropic message threads are now on by default for any provider whose baseUrl is on api.anthropic.com, not only the `anthropic` provider ([#11987](https://github.com/earendil-works/pi/issues/11987))
 - The resume command printed on exit is now on its own line after `To resume this session:`, so it can be selected with a triple-click ([#12237](https://github.com/earendil-works/pi/issues/12237))
+- On Linux, the release uses native Rust binaries for image processing, delegate workers, and the Claude delegate permission hook. Set `DELEGATE_WORKER=js` to use the JavaScript worker.
+- The Linux launcher uses smaller Node.js heap settings to reduce peak memory in long sessions.
+- The native web and Git operations now share one model-facing `web_tools` definition by default. The model can request an operation's arguments without changing the tool list or system prompt. This keeps the prompt prefix stable for cache reuse.
 
 ### Fixed
 
