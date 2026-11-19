@@ -33,6 +33,7 @@
 - The find tool's path patterns are now relative to the search directory, like grep's `glob`: `src/*.ts` finds `src/a.ts` but no longer `pkg/src/a.ts`; use `**/src/*.ts` to match at any depth. Patterns without `/` still match file names at any depth ([#12066](https://github.com/earendil-works/pi/issues/12066))
 - On Linux, the release uses native Rust binaries for image processing, delegate workers, and the Claude delegate permission hook. Set `DELEGATE_WORKER=js` to use the JavaScript worker.
 - The Linux launcher uses smaller Node.js heap settings to reduce peak memory in long sessions.
+- The native web and Git operations now share one model-facing `web_tools` definition by default. The model can request an operation's arguments without changing the tool list or system prompt. This keeps the prompt prefix stable for cache reuse.
 
 ### Fixed
 

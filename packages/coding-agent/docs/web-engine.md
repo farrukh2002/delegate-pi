@@ -4,7 +4,9 @@
 
 `pi-web` is a Linux-only Rust helper. `WebEngineClient` starts it on demand and reuses the process until its owner closes it. It uses local pipes, not MCP or an HTTP server. Stage 1 provides the engine lifecycle and protocol. Stage 2 adds the [native HTTP/API operation](web-http.md) and the built-in `http_request` tool. Stage 3 adds [key-free web search](web-search.md) through `web_search`. Stage 4 adds [page retrieval and readable content extraction](web-fetch.md) through `web_fetch`. Stage 5 adds [repository indexing, search, and reads](web-git.md) through `git_index`, `git_search`, and `git_read`. The built-in `web` extension owns the client and closes it on session shutdown, replacement, or reload. No process starts until the tool is used.
 
-To disable the web tools, disable `web` under Built-in in `pi config` or set `"extensions": ["-builtin:web"]`. The existing `--tools` and `defaultTools` selection rules also apply.
+By default, the model sees one tool, `web_tools`. It calls an existing operation with `operation` and `args`, for example `{"operation":"web_fetch","args":{"url":"https://example.com/","maxOutputBytes":1800}}`. Set `describe: true` to get the inputs and guidance for one operation without running it. Neither call changes the tool declarations or system prompt. This keeps the prompt prefix stable for cache reuse. The gateway uses the existing input validation, tool hooks, and HTTP approval rules.
+
+To disable all web and Git operations, disable `web` under Built-in in `pi config` or set `"extensions": ["-builtin:web"]`. The gateway only calls enabled operations, so `--exclude-tools http_request` still blocks HTTP API requests through it. To declare an operation directly instead of using the gateway, select it without `web_tools`, for example `pi --tools read,web_fetch`.
 
 The first release must support key-free broad search and mixed developer/general-web research. Hosted APIs remain optional. Browser execution is outside the first release.
 
