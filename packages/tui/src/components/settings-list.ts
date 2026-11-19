@@ -33,6 +33,8 @@ export interface SettingsListTheme {
 
 export interface SettingsListOptions {
 	enableSearch?: boolean;
+	/** Text for the Esc entry in the hint line. Defaults to "Esc to cancel". */
+	cancelHint?: string;
 }
 
 export class SettingsList implements Component {
@@ -47,6 +49,7 @@ export class SettingsList implements Component {
 	private onCancel: () => void;
 	private searchInput?: Input;
 	private searchEnabled: boolean;
+	private cancelHint: string;
 
 	// Submenu state
 	private submenuComponent: Component | null = null;
@@ -68,6 +71,7 @@ export class SettingsList implements Component {
 		this.onChange = onChange;
 		this.onCancel = onCancel;
 		this.searchEnabled = options.enableSearch ?? false;
+		this.cancelHint = options.cancelHint ?? "Esc to cancel";
 		if (this.searchEnabled) {
 			this.searchInput = new Input();
 		}
@@ -326,8 +330,12 @@ export class SettingsList implements Component {
 		const keysHint = `${confirm} to change · ${kb.getKeys("tui.select.cancel").join("/")} to cancel`;
 		lines.push("");
 		lines.push(
-			truncateToWidth(
-				this.theme.hint(this.searchEnabled ? `  Type to search · ${keysHint}` : `  ${keysHint}`),
+			...wrapTextWithAnsi(
+				this.theme.hint(
+					this.searchEnabled
+						? `  Type to search · ${keysHint} · ${this.cancelHint}`
+						: `  ${keysHint} · ${this.cancelHint}`,
+				),
 				width,
 			),
 		);

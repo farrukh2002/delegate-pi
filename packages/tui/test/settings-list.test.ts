@@ -2,6 +2,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { SettingsList, type SettingsListTheme } from "../src/components/settings-list.ts";
 import { getKeybindings, KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "../src/keybindings.ts";
+import { visibleWidth } from "../src/utils.ts";
 
 const testTheme: SettingsListTheme = {
 	label: (text) => text,
@@ -133,5 +134,37 @@ describe("SettingsList", () => {
 		} finally {
 			setKeybindings(previousKeybindings);
 		}
+	});
+
+	it("shows a custom Esc hint, also with search enabled", () => {
+		const cancelHint = "Esc to close · Changes save immediately";
+		const plain = new SettingsList(
+			items,
+			10,
+			testTheme,
+			() => {},
+			() => {},
+			{ cancelHint },
+		);
+		const searchable = new SettingsList(
+			items,
+			10,
+			testTheme,
+			() => {},
+			() => {},
+			{ enableSearch: true, cancelHint },
+		);
+
+		assert.match(
+			plain.render(80).join("\n"),
+			/enter\/space to change · escape\/ctrl\+c to cancel · Esc to close · Changes save/,
+		);
+		const searchableText = searchable.render(80).join(" ");
+		assert.match(
+			searchableText,
+			/Type to search · enter\/space to change · escape\/ctrl\+c to cancel · Esc to close · Changes save/,
+		);
+		for (const line of searchable.render(80)) assert.ok(visibleWidth(line) <= 80);
+		assert.doesNotMatch(plain.render(80).join("\n"), /Esc to cancel/);
 	});
 });
