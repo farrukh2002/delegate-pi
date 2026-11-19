@@ -212,7 +212,7 @@ describe("web_fetch tool", () => {
 		expect(fake.fetchCalls[0].options?.signal).toBeUndefined();
 		expect(text(result)).toBe(JSON.stringify(FETCH_RESULT));
 		expect(result.structuredContent).toEqual(FETCH_RESULT);
-		expect(result.details).toBeUndefined();
+		expect(result.details).toEqual({ kind: "fetch", status: 200, access: "ok", truncated: false });
 		expect(result.isError).toBeUndefined();
 	});
 

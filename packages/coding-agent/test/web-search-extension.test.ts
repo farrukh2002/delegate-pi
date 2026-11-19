@@ -224,7 +224,7 @@ describe("web_search tool", () => {
 		expect(fake.searchCalls[0].options?.signal).toBeUndefined();
 		expect(text(result)).toBe(JSON.stringify(SEARCH_RESULT));
 		expect(result.structuredContent).toEqual(SEARCH_RESULT);
-		expect(result.details).toBeUndefined();
+		expect(result.details).toMatchObject({ kind: "search" });
 		expect(result.isError).toBeUndefined();
 	});
 

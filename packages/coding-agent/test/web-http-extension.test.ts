@@ -207,7 +207,7 @@ describe("http_request tool", () => {
 		expect(fake.calls).toHaveLength(1);
 		expect(fake.calls[0].params).toEqual({ url: "http://localhost:3000/items" });
 		expect(text(result)).toBe(JSON.stringify(RESULT));
-		expect(result.details).toBeUndefined();
+		expect(result.details).toMatchObject({ kind: "http" });
 	});
 
 	it("does not ask for approval for GET or HEAD", async () => {

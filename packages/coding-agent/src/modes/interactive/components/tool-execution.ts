@@ -16,12 +16,10 @@ import type { ToolDefinition, ToolRenderContext, ToolRenderers } from "../../../
 export type { ToolRenderers };
 
 import { formatToolCallWithArgs, getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
+import { renderOutputPreview } from "../../../core/tools/renderers/output-preview.ts";
 import { ensurePngTranscoder } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
 import { keyHint, keyText } from "./keybinding-hints.ts";
-import { VisualLinePreview } from "./visual-truncate.ts";
-
-const FALLBACK_PREVIEW_LINES = 10;
 
 export interface ToolExecutionOptions {
 	showImages?: boolean;
@@ -154,20 +152,7 @@ export class ToolExecutionComponent extends Container {
 			return undefined;
 		}
 
-		const text = output
-			.split("\n")
-			.map((line) => theme.fg("toolOutput", line))
-			.join("\n");
-		if (this.expanded) {
-			return new Text(text, 0, 0);
-		}
-		return new VisualLinePreview({
-			text,
-			maxVisualLines: FALLBACK_PREVIEW_LINES,
-			keep: "start",
-			formatHint: (hidden) =>
-				`${theme.fg("muted", `... (${hidden} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`,
-		});
+		return renderOutputPreview(output, this.expanded, theme);
 	}
 
 	private createResultRegion(component: Component): MouseRegion {

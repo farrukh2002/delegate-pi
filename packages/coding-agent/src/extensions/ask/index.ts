@@ -1,6 +1,7 @@
 import { type Static, Type } from "typebox";
 import { askUserQuestion } from "../../core/ask-user.ts";
 import type { ExtensionAPI, ExtensionFactory, ToolDefinition } from "../../core/extensions/types.ts";
+import { askRenderers } from "./renderers.ts";
 
 export const ASK_USER_TOOL_NAME = "ask_user";
 
@@ -55,6 +56,7 @@ export function createAskUserToolDefinition(): ToolDefinition<typeof askUserSche
 			"Use ask_user for confirmation before destructive or hard-to-undo actions. A dismissed question is not approval.",
 		],
 		parameters: askUserSchema,
+		...askRenderers,
 		executionMode: "sequential",
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			if (!ctx?.hasUI) {
