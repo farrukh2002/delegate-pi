@@ -17,6 +17,7 @@ type AssistantUsage = {
 function createSession(options: {
 	sessionName: string;
 	modelId?: string;
+	noModel?: boolean;
 	provider?: string;
 	reasoning?: boolean;
 	thinkingLevel?: string;
@@ -66,12 +67,14 @@ function createSession(options: {
 
 	const session = {
 		state: {
-			model: {
-				id: options.modelId ?? "test-model",
-				provider: options.provider ?? "test",
-				contextWindow: 200_000,
-				reasoning: options.reasoning ?? false,
-			},
+			model: options.noModel
+				? { id: "unknown", provider: "unknown", api: "unknown", contextWindow: 0, reasoning: false }
+				: {
+						id: options.modelId ?? "test-model",
+						provider: options.provider ?? "test",
+						contextWindow: 200_000,
+						reasoning: options.reasoning ?? false,
+					},
 			thinkingLevel: options.thinkingLevel ?? "off",
 		},
 		sessionManager: {
@@ -82,7 +85,7 @@ function createSession(options: {
 			getSessionName: () => options.sessionName,
 			getCwd: () => "/tmp/project",
 		},
-		getContextUsage: () => ({ contextWindow: 200_000, percent: 12.3 }),
+		getContextUsage: () => (options.noModel ? undefined : { contextWindow: 200_000, percent: 12.3 }),
 		routedModel: options.routedModel,
 		modelRuntime: {
 			isUsingSubscription: () => options.usingSubscription ?? false,
@@ -250,6 +253,33 @@ describe("FooterComponent width handling", () => {
 		expect(stats).toBe(
 			"ctx \u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 12.3% of 200k auto   in 1.2M   out 664k   $17.954",
 		);
+	});
+
+	it("tells the user to log in instead of showing an empty context bar when no model is set", () => {
+		const session = createSession({ sessionName: "", noModel: true });
+		const footer = new FooterComponent(session, createFooterData(0));
+
+		const [location, stats] = footer.render(120).map(stripAnsi);
+
+		expect(stats).toBe("No model · /login");
+		expect(stats).not.toContain("ctx");
+		expect(stats).not.toContain("of 0");
+		expect(location.endsWith("no-model")).toBe(true);
+		expect(location).not.toContain("unknown");
+	});
+
+	it("does not show the unknown provider when several providers are available and no model is set", () => {
+		const session = createSession({ sessionName: "", noModel: true });
+		const location = stripAnsi(new FooterComponent(session, createFooterData(3)).render(120)[0]);
+
+		expect(location).not.toContain("(unknown)");
+	});
+
+	it("keeps the no-model hint on narrow terminals", () => {
+		const session = createSession({ sessionName: "", noModel: true });
+		const stats = stripAnsi(new FooterComponent(session, createFooterData(0)).render(20)[1]);
+
+		expect(stats).toBe("No model · /login");
 	});
 
 	it("drops the least important stats first on narrow terminals", () => {

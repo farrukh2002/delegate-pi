@@ -1,4 +1,5 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import type { Model } from "@earendil-works/pi-ai";
 import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
@@ -28,6 +29,10 @@ export function formatTokens(count: number): string {
 	if (count < 1000000) return `${Math.round(count / 1000)}k`;
 	if (count < 10000000) return `${(count / 1000000).toFixed(1)}M`;
 	return `${Math.round(count / 1000000)}M`;
+}
+
+export function isUnknownModel(model: Model<any> | undefined): boolean {
+	return !!model && model.provider === "unknown" && model.id === "unknown" && model.api === "unknown";
 }
 
 export function formatCwdForFooter(cwd: string, home: string | undefined): string {
@@ -180,7 +185,8 @@ export class FooterComponent implements Component {
 			(branch ? `  ${theme.fg("accent", branch)}` : "") +
 			(sessionName ? theme.fg("dim", ` • ${sanitizeStatusText(sessionName)}`) : "");
 
-		let model = state.model?.id || "no-model";
+		const hasModel = !isUnknownModel(state.model);
+		let model = hasModel ? state.model?.id || "no-model" : "no-model";
 		if (state.model?.reasoning) {
 			const thinkingLevel = state.thinkingLevel || "off";
 			model += theme.fg("dim", thinkingLevel === "off" ? " • thinking off" : ` • ${thinkingLevel}`);
@@ -190,7 +196,7 @@ export class FooterComponent implements Component {
 			model += theme.fg("dim", ` → ${routed.model.id}${routed.thinkingLevel ? ` • ${routed.thinkingLevel}` : ""}`);
 		}
 		const rights =
-			this.footerData.getAvailableProviderCount() > 1 && state.model
+			this.footerData.getAvailableProviderCount() > 1 && state.model && hasModel
 				? [`${theme.fg("dim", `(${state.model.provider})`)} ${model}`, model]
 				: [model];
 		return spread(left, rights, width);
@@ -198,22 +204,12 @@ export class FooterComponent implements Component {
 
 	private renderStatsLine(width: number): string {
 		const state = this.session.state;
-		const { usageTotals, latestCacheHitRate, contextUsage } = this.getSessionStats();
-		const contextWindow = contextUsage?.contextWindow ?? state.model?.contextWindow ?? 0;
-		const known = contextUsage?.percent !== null;
-		const percent = Math.min(100, Math.max(0, contextUsage?.percent ?? 0));
-		const color = percent > 90 ? "error" : percent > 70 ? "warning" : "success";
-		const barWidth = width >= 100 ? 14 : width >= 70 ? 10 : 6;
-		const filled = known ? Math.round((percent / 100) * barWidth) : 0;
-		const bar = theme.fg(color, "█".repeat(filled)) + theme.fg("dim", "░".repeat(barWidth - filled));
+		const { usageTotals, latestCacheHitRate } = this.getSessionStats();
 		const label = (text: string) => theme.fg("dim", text);
 		const value = (text: string) => theme.fg("muted", text);
 
 		const segments: Array<{ text: string; priority: number }> = [
-			{
-				text: `${label("ctx")} ${bar} ${theme.fg(color, known ? `${percent.toFixed(1)}%` : "?")}${label(` of ${formatTokens(contextWindow)}${this.autoCompactEnabled ? " auto" : ""}`)}`,
-				priority: 0,
-			},
+			{ text: this.renderContextSegment(width), priority: 0 },
 		];
 		if (usageTotals.input)
 			segments.push({ text: `${label("in")} ${value(formatTokens(usageTotals.input))}`, priority: 2 });
@@ -250,6 +246,24 @@ export class FooterComponent implements Component {
 			);
 		}
 		return truncateToWidth(join(), width, theme.fg("dim", "…"));
+	}
+
+	private renderContextSegment(width: number): string {
+		const model = this.session.state.model;
+		if (!model || isUnknownModel(model))
+			return `${theme.fg("warning", "No model")}${theme.fg("dim", " · ")}${theme.fg("accent", "/login")}`;
+
+		const { contextUsage } = this.getSessionStats();
+		const contextWindow = contextUsage?.contextWindow ?? model.contextWindow ?? 0;
+		const known = contextUsage?.percent !== null;
+		const percent = Math.min(100, Math.max(0, contextUsage?.percent ?? 0));
+		const color = percent > 90 ? "error" : percent > 70 ? "warning" : "success";
+		const barWidth = width >= 100 ? 14 : width >= 70 ? 10 : 6;
+		const filled = known ? Math.round((percent / 100) * barWidth) : 0;
+		const bar = theme.fg(color, "█".repeat(filled)) + theme.fg("dim", "░".repeat(barWidth - filled));
+		const label = theme.fg("dim", "ctx");
+		const total = theme.fg("dim", ` of ${formatTokens(contextWindow)}${this.autoCompactEnabled ? " auto" : ""}`);
+		return `${label} ${bar} ${theme.fg(color, known ? `${percent.toFixed(1)}%` : "?")}${total}`;
 	}
 
 	private withExtensionStatuses(lines: string[], width: number): string[] {
