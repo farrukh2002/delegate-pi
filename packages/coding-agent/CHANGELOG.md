@@ -71,6 +71,7 @@
 - Fixed Mistral Large 4 tool calls stalling. Strict tool schemas are off for Mistral models unless explicitly enabled ([#12148](https://github.com/earendil-works/pi/issues/12148)).
 - Fixed OpenAI Codex turns failing when the WebSocket reaches its 60-minute limit. Pi retries on a new connection ([#12124](https://github.com/earendil-works/pi/issues/12124)).
 - Fixed `ask_user` and other selector dialogs hiding their choices, selection marker and key hints in short terminals. The dialog now limits its height to the terminal, and a long question scrolls with the page keys.
+- Fixed collapsed output of tools without a custom renderer, such as the web tools, filling the screen when the result is one long line like minified JSON. Collapsed output is now limited to 10 wrapped rows.
 
 ### Removed
 
