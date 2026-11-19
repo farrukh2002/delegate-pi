@@ -210,6 +210,7 @@
 - Fixed the footer showing an empty context bar with `0.0% of 0 auto` when no model is set. It now shows "No model · /login".
 - Fixed the working indicator always saying "Working". It now shows what the agent does: "Waiting for model", "Thinking", "Writing response", "Preparing tool call", "Running <tool>", and "Waiting for your answer" while a dialog is open. A message set with `setWorkingMessage` still takes priority.
 - Fixed `ask_user`, `web_fetch`, `http_request`, `web_search`, `git_index`, `git_search`, `git_read` and `web_tools` showing raw JSON or the full text meant for the model. Results now show a short label such as "Page fetched · 200 OK", "Found 3 results", "Answered · <answer>" or "Question dismissed". Expand the result to see the raw output. Failed calls still show their error text.
+- Fixed hints and other dim text in the `dark` and `light` themes being hard to read. The `dim` color is now `#848484` on dark and `#767676` on light, which gives at least 4.5:1 contrast on black and on white.
 
 ### Removed
 
