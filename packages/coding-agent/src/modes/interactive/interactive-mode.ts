@@ -328,6 +328,19 @@ function isAnthropicSubscriptionAuthKey(apiKey: string | undefined): boolean {
 	return typeof apiKey === "string" && apiKey.startsWith("sk-ant-oat");
 }
 
+function assistantPhaseLabel(message: AssistantMessage): string {
+	switch (message.content.at(-1)?.type) {
+		case "thinking":
+			return "Thinking";
+		case "text":
+			return "Writing response";
+		case "toolCall":
+			return "Preparing tool call";
+		default:
+			return "Waiting for model";
+	}
+}
+
 function quoteIfNeeded(value: string): string {
 	if (value.length > 0 && !/[^a-zA-Z0-9_\-./~:@]/.test(value)) {
 		return value;
@@ -591,6 +604,7 @@ export class InteractiveMode {
 	private activeWorkingIndicatorEmbedded = false;
 	private readonly idleStatus = new IdleStatus();
 	private workingMessage: string | undefined = undefined;
+	private workingPhase: string | undefined = undefined;
 	private workingVisible = true;
 	private workingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
 	private readonly defaultWorkingMessage = "Working";
@@ -2434,13 +2448,26 @@ export class InteractiveMode {
 					(this.editor.borderColor ?? theme.getThinkingBorderColor(this.session.thinkingLevel || "off"))(text)
 			: undefined;
 		this.showStatusIndicator(
-			new WorkingStatusIndicator(
-				this.ui,
-				this.workingMessage ?? this.defaultWorkingMessage,
-				this.workingIndicatorOptions,
-				colorFn,
-			),
+			new WorkingStatusIndicator(this.ui, this.currentWorkingLabel(), this.workingIndicatorOptions, colorFn),
 		);
+	}
+
+	private currentWorkingLabel(): string {
+		if (this.workingMessage !== undefined) return this.workingMessage;
+		if (this.extensionDialogs.length > 0) return "Waiting for your answer";
+		return this.workingPhase ?? this.defaultWorkingMessage;
+	}
+
+	private refreshWorkingLabel(): void {
+		if (this.activeStatusIndicator?.kind === "working") {
+			this.activeStatusIndicator.setMessage(this.currentWorkingLabel());
+		}
+	}
+
+	private setWorkingPhase(phase: string | undefined): void {
+		if (phase === this.workingPhase) return;
+		this.workingPhase = phase;
+		this.refreshWorkingLabel();
 	}
 
 	private setWorkingVisible(visible: boolean): void {
@@ -2559,9 +2586,7 @@ export class InteractiveMode {
 		this.workingMessage = undefined;
 		this.workingVisible = true;
 		this.setWorkingIndicator();
-		if (this.activeStatusIndicator?.kind === "working") {
-			this.activeStatusIndicator.setMessage(this.defaultWorkingMessage);
-		}
+		this.refreshWorkingLabel();
 		this.setHiddenThinkingLabel();
 	}
 
@@ -2723,9 +2748,7 @@ export class InteractiveMode {
 			setStatus: (key, text) => this.setExtensionStatus(key, text),
 			setWorkingMessage: (message) => {
 				this.workingMessage = message;
-				if (this.activeStatusIndicator?.kind === "working") {
-					this.activeStatusIndicator.setMessage(message ?? this.defaultWorkingMessage);
-				}
+				this.refreshWorkingLabel();
 			},
 			setWorkingVisible: (visible) => this.setWorkingVisible(visible),
 			setWorkingIndicator: (options) => this.setWorkingIndicator(options),
@@ -2800,6 +2823,7 @@ export class InteractiveMode {
 		this.editorContainer.addChild(component);
 		this.ui.setFocus(component);
 		this.programStatus.setBlocked("extension-dialog", top?.blocked);
+		this.refreshWorkingLabel();
 		this.ui.requestRender();
 	}
 
@@ -3508,6 +3532,7 @@ export class InteractiveMode {
 				break;
 
 			case "turn_start":
+				this.setWorkingPhase("Waiting for model");
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(true);
 				}
@@ -3610,6 +3635,7 @@ export class InteractiveMode {
 				if (this.streamingComponent && event.message.role === "assistant") {
 					this.streamingMessage = event.message;
 					this.streamingComponent.updateContent(this.streamingMessage, true);
+					this.setWorkingPhase(assistantPhaseLabel(this.streamingMessage));
 
 					for (const content of this.streamingMessage.content) {
 						if (content.type === "toolCall") {
@@ -3691,6 +3717,7 @@ export class InteractiveMode {
 			case "tool_execution_start": {
 				// Nested calls (from codemode scripts) are shown inside their parent's row.
 				if (event.parentToolCallId) break;
+				this.setWorkingPhase(`Running ${event.toolName}`);
 				let component = this.pendingTools.get(event.toolCallId);
 				if (!component) {
 					component = new ToolExecutionComponent(
@@ -3739,6 +3766,7 @@ export class InteractiveMode {
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(false);
 				}
+				this.workingPhase = undefined;
 				this.clearStatusIndicator("working");
 				if (this.streamingComponent) {
 					this.chatContainer.removeChild(this.streamingComponent);

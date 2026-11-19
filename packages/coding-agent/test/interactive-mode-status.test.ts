@@ -275,6 +275,116 @@ describe("InteractiveMode rebuilt user bash output", () => {
 	});
 });
 
+describe("InteractiveMode working label", () => {
+	beforeAll(() => initTheme("dark"));
+
+	function createContext(overrides: Record<string, unknown> = {}) {
+		const indicator = { kind: "working", setMessage: vi.fn() };
+		const fakeThis: any = {
+			isInitialized: true,
+			workingMessage: undefined,
+			workingPhase: undefined,
+			workingVisible: true,
+			defaultWorkingMessage: "Working",
+			extensionDialogs: [],
+			activeStatusIndicator: indicator,
+			pendingTools: new Map([["call-1", { updateArgs: vi.fn(), markExecutionStarted: vi.fn() }]]),
+			streamingComponent: { updateContent: vi.fn() },
+			streamingMessage: undefined,
+			footer: { invalidate: vi.fn() },
+			programStatus: { handleEvent: vi.fn() },
+			settingsManager: { getShowTerminalProgress: () => false },
+			ui: { requestRender: vi.fn() },
+			chatContainer: new Container(),
+			clearStatusIndicator: vi.fn(),
+			...overrides,
+		};
+		for (const name of ["handleEvent", "currentWorkingLabel", "refreshWorkingLabel", "setWorkingPhase"]) {
+			fakeThis[name] = (InteractiveMode as any).prototype[name].bind(fakeThis);
+		}
+		return { fakeThis, indicator };
+	}
+
+	function assistantMessage(...types: string[]) {
+		return {
+			role: "assistant",
+			content: types.map((type) => ({ type, id: "call-1", name: "read", arguments: {} })),
+		};
+	}
+
+	test("waits for the model at the start of a turn", async () => {
+		const { fakeThis, indicator } = createContext();
+
+		await fakeThis.handleEvent({ type: "turn_start" });
+
+		expect(indicator.setMessage).toHaveBeenLastCalledWith("Waiting for model");
+	});
+
+	test.each([
+		{ types: ["thinking"], label: "Thinking" },
+		{ types: ["thinking", "text"], label: "Writing response" },
+		{ types: ["text", "toolCall"], label: "Preparing tool call" },
+	])("labels a streamed message that ends with $types", async ({ types, label }) => {
+		const { fakeThis, indicator } = createContext();
+
+		await fakeThis.handleEvent({ type: "message_update", message: assistantMessage(...types) });
+
+		expect(indicator.setMessage).toHaveBeenLastCalledWith(label);
+	});
+
+	test("names the running tool", async () => {
+		const { fakeThis, indicator } = createContext();
+
+		await fakeThis.handleEvent({ type: "tool_execution_start", toolCallId: "call-1", toolName: "read", args: {} });
+
+		expect(indicator.setMessage).toHaveBeenLastCalledWith("Running read");
+	});
+
+	test("does not rewrite the label when the phase did not change", async () => {
+		const { fakeThis, indicator } = createContext();
+
+		for (let i = 0; i < 3; i++) {
+			await fakeThis.handleEvent({ type: "message_update", message: assistantMessage("text") });
+		}
+
+		expect(indicator.setMessage).toHaveBeenCalledTimes(1);
+	});
+
+	test("says it waits for the user while a dialog is open and restores the phase after", () => {
+		const { fakeThis, indicator } = createContext();
+		fakeThis.setWorkingPhase("Running ask_user");
+
+		fakeThis.extensionDialogs = [{}];
+		fakeThis.refreshWorkingLabel();
+		expect(indicator.setMessage).toHaveBeenLastCalledWith("Waiting for your answer");
+
+		fakeThis.extensionDialogs = [];
+		fakeThis.refreshWorkingLabel();
+		expect(indicator.setMessage).toHaveBeenLastCalledWith("Running ask_user");
+	});
+
+	test("keeps a working message set by an extension", async () => {
+		const { fakeThis, indicator } = createContext({ workingMessage: "Indexing" });
+
+		await fakeThis.handleEvent({ type: "turn_start" });
+		await fakeThis.handleEvent({ type: "message_update", message: assistantMessage("text") });
+		fakeThis.extensionDialogs = [{}];
+		fakeThis.refreshWorkingLabel();
+
+		expect(fakeThis.currentWorkingLabel()).toBe("Indexing");
+		for (const call of indicator.setMessage.mock.calls) expect(call[0]).toBe("Indexing");
+	});
+
+	test("forgets the phase when the run ends", async () => {
+		const { fakeThis } = createContext();
+		await fakeThis.handleEvent({ type: "message_update", message: assistantMessage("text") });
+
+		await fakeThis.handleEvent({ type: "agent_end" });
+
+		expect(fakeThis.currentWorkingLabel()).toBe("Working");
+	});
+});
+
 describe("InteractiveMode.createExtensionUIContext setTheme", () => {
 	test("persists theme changes to settings manager", () => {
 		initTheme("dark");
@@ -346,6 +456,7 @@ describe("InteractiveMode.showExtensionCustom", () => {
 		extensionDialogs: [],
 		extensionOverlays: new Map(),
 		programStatus: { setBlocked: vi.fn() },
+		refreshWorkingLabel: (InteractiveMode as any).prototype.refreshWorkingLabel,
 		pushExtensionDialog: (InteractiveMode as any).prototype.pushExtensionDialog,
 		removeExtensionDialog: (InteractiveMode as any).prototype.removeExtensionDialog,
 		showTopExtensionDialog: (InteractiveMode as any).prototype.showTopExtensionDialog,
