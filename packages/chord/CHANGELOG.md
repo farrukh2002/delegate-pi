@@ -25,6 +25,7 @@
 - `WorkerState` carries the running worker's `incarnation` (the `ctx.incarnation` of its calls), from its link's handshake on: before the worker's first call is handled, also one its startup makes.
 - A route's `resolve` may return `opened(incarnation)`, called once at the link's handshake with the incarnation of the host at the other end, before anything else that host sent is handled.
 - `@earendil-works/chord/app` exports `appInfoFacet` and `workerInfoFacet`, the facets serving the kit's start-data objects `AppInfo` and `WorkerInfo`, for an app that runs hosts of its own (its tests with the server and workers in one process).
+- `startClient` and `startPage` accept `limits` for incoming message parts. The defaults are 16 MiB on the wire and 64 MiB after decoding.
 
 ### Changed
 

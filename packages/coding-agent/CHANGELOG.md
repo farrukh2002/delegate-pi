@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### New Features
+
+- **Native web and Git tools on Linux:** Make HTTP requests, search the web, extract page content, and index, search, or read a Git repository. See [Native web tools](docs/web-engine.md).
+- **More control over delegated tasks:** Steer a running Pi child, set turn and context limits, and stop repeated tool calls. Review the task trace and see child usage in the parent session. See [Delegate tasks](docs/delegate/README.md).
+- **New extension controls:** Make one-shot model calls, check prompt-cache status and costs, or disable an MCP server for the current session without editing its config. See [Extensions](docs/extensions.md).
+- **GPT-6.2 Astra and Sol:** Select either model on OpenAI, Azure OpenAI Responses, or OpenAI Codex. Sol is the new default for these providers. See [Models](docs/models.md).
+
 ### Breaking Changes
 
 - Extension components: `render()` now returns `readonly string[]`, and `Container` returns the same cached array while its children are unchanged. Extensions that modify render output in place, including `super.render()` in a `Container` subclass or an embedded component's output, must copy it first ([#9549](https://github.com/earendil-works/pi/issues/9549))
@@ -16,6 +23,7 @@
 - Added `ctx.complete()` for one-shot model calls without tools or changes to the conversation. It returns usage on success and rejects failed or cancelled calls.
 - Added `ctx.cacheWarmingStatus` and the `CACHE_TTL_MS` and `computeCacheWaste` exports so extensions can check the state and cost of the prompt cache.
 - Added session-scoped MCP server controls with `pi.setMcpServerEnabled()` and `pi.registerMcpServerControl()`. Extensions can disable a server at session startup without editing `mcp.json`.
+- Added GPT-6.2 Astra and GPT-6.2 Sol to OpenAI, Azure OpenAI Responses, and OpenAI Codex. On Codex, Sol supports a 500K-token context window and Astra supports 272K.
 
 ### Changed
 
@@ -23,6 +31,8 @@
 - Updated `undici` to 8.12.4 for security advisories GHSA-mqg3-3v4r-cm32, GHSA-7xg3-fphp-28hg, GHSA-5rm8-gv32-r954, GHSA-9v6h-8rgp-m69f, GHSA-3g9m-rv3r-w5w2, and GHSA-r4pc-4jcp-7pqc ([#12200](https://github.com/earendil-works/pi/issues/12200))
 - The default model for the `openai`, `azure`, and `openai-codex` providers is now GPT-6.2 Sol (`gpt-6.2-sol`) instead of GPT-6.1 Sol, at the same price
 - The find tool's path patterns are now relative to the search directory, like grep's `glob`: `src/*.ts` finds `src/a.ts` but no longer `pkg/src/a.ts`; use `**/src/*.ts` to match at any depth. Patterns without `/` still match file names at any depth ([#12066](https://github.com/earendil-works/pi/issues/12066))
+- On Linux, the release uses native Rust binaries for image processing, delegate workers, and the Claude delegate permission hook. Set `DELEGATE_WORKER=js` to use the JavaScript worker.
+- The Linux launcher uses smaller Node.js heap settings to reduce peak memory in long sessions.
 
 ### Fixed
 
@@ -55,6 +65,10 @@
 - Fixed fullscreen scrolling in long sessions saturating a CPU core by re-rendering the whole transcript on every wheel event ([#9549](https://github.com/earendil-works/pi/issues/9549))
 - Fixed delegate snapshots missing same-size edits. `accept` and `undo` keep the final state and any trace until `prune` removes them.
 - Fixed delegate `accept` and `undo` missing final usage when they run before the next status check.
+- Fixed update checks using the stable channel for installs on the `dev` or `rc` channel. Self-update accepts a version change from the configured installer and does not treat an unchanged `dev` or `rc` version as an error.
+- Fixed GitHub Copilot ignoring the selected thinking level on supported Gemini and Kimi models and not counting reasoning tokens ([#12110](https://github.com/earendil-works/pi/pull/12110) by [@DenielC1](https://github.com/DenielC1)).
+- Fixed Mistral Large 4 tool calls stalling. Strict tool schemas are off for Mistral models unless explicitly enabled ([#12148](https://github.com/earendil-works/pi/issues/12148)).
+- Fixed OpenAI Codex turns failing when the WebSocket reaches its 60-minute limit. Pi retries on a new connection ([#12124](https://github.com/earendil-works/pi/issues/12124)).
 
 ### Removed
 
