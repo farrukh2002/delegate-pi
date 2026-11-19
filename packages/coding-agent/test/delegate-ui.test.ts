@@ -371,7 +371,7 @@ describe("delegate ui", () => {
 		expect(colorToHex(theme.colors.error).toLowerCase()).toBe("#ff6b80");
 		expect(colorToHex(theme.colors.warning).toLowerCase()).toBe("#ffc107");
 		expect(colorToHex(theme.colors.muted).toLowerCase()).toBe("#999999");
-		expect(colorToHex(theme.colors.dim).toLowerCase()).toBe("#505050");
+		expect(colorToHex(theme.colors.dim).toLowerCase()).toBe("#848484");
 	});
 
 	it("renders a chain-array delegate call and single/parallel labels", () => {
