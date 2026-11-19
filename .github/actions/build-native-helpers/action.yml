@@ -1,12 +1,25 @@
 name: Build native helpers
 description: Build the native binaries for the Linux release archive
 
+inputs:
+  arch:
+    description: Architecture to build, x64 or arm64. Builds both when it is all.
+    default: all
+
 runs:
   using: composite
   steps:
     - name: Install Rust targets
       shell: bash
-      run: rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+      env:
+        ARCH: ${{ inputs.arch }}
+      run: |
+        case "$ARCH" in
+          x64) targets=x86_64-unknown-linux-musl ;;
+          arm64) targets=aarch64-unknown-linux-musl ;;
+          *) targets="x86_64-unknown-linux-musl aarch64-unknown-linux-musl" ;;
+        esac
+        rustup target add $targets
 
     - name: Install Zig
       if: ${{ hashFiles('scripts/build-web.sh') != '' }}
@@ -22,4 +35,6 @@ runs:
 
     - name: Build native helpers
       shell: bash
+      env:
+        NATIVE_ARCH: ${{ inputs.arch }}
       run: npm run build:native

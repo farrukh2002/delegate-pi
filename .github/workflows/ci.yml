@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-check:
+  check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,18 +26,101 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Build native helpers
-        uses: ./.github/actions/build-native-helpers
-
       - name: Build
         run: npm run build
 
       - name: Check
         run: npm run check
 
+  rust-test:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: packages/web-rs -> target
+
       - name: Test native web engine
         if: ${{ hashFiles('packages/web-rs/Cargo.toml') != '' }}
         run: cargo test --locked --manifest-path packages/web-rs/Cargo.toml
+
+  native:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    env:
+      CARGO_PROFILE_RELEASE_LTO: "off"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: |
+            packages/image-resize-rs -> target
+            packages/delegate-worker-rs -> target
+            packages/delegate-hook-rs -> target
+            packages/web-rs -> target
+          key: ${{ matrix.arch }}
+
+      - name: Build native helpers
+        uses: ./.github/actions/build-native-helpers
+        with:
+          arch: ${{ matrix.arch }}
+
+      - name: Archive native helpers
+        run: >
+          tar -cf native-${{ matrix.arch }}.tar
+          packages/coding-agent/dist/bin/pi-image-resize-${{ matrix.arch }}
+          packages/coding-agent/dist/bin/pi-web-${{ matrix.arch }}
+          packages/coding-agent/delegate/bin/delegate-worker-${{ matrix.arch }}
+          packages/coding-agent/delegate/bin/child-claude-${{ matrix.arch }}
+
+      - name: Upload native helpers
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-${{ matrix.arch }}
+          path: native-${{ matrix.arch }}.tar
+          retention-days: 1
+
+  package:
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build
+
+      - name: Download native helpers
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: native-*
+          merge-multiple: true
+
+      - name: Unpack native helpers
+        run: |
+          tar -xf native-x64.tar
+          tar -xf native-arm64.tar
 
       - name: Smoke test native web engine
         if: ${{ hashFiles('scripts/smoke-test-web-engine.mjs') != '' }}
