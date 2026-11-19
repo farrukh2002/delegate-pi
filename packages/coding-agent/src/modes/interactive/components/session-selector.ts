@@ -118,29 +118,16 @@ class SessionSelectorHeader implements Component {
 	invalidate(): void {}
 
 	render(width: number): string[] {
-		const title = this.scope === "current" ? "Resume Session (Current Folder)" : "Resume Session (All)";
-		const leftText = theme.bold(title);
-
-		const sortLabel = this.sortMode === "threaded" ? "Threaded" : this.sortMode === "recent" ? "Recent" : "Fuzzy";
-		const sortText = theme.fg("muted", "Sort: ") + theme.fg("accent", sortLabel);
-
-		const nameLabel = this.nameFilter === "all" ? "All" : "Named";
-		const nameText = theme.fg("muted", "Name: ") + theme.fg("accent", nameLabel);
-
-		let scopeText: string;
-		if (this.loading) {
-			const progressText = this.loadProgress ? `${this.loadProgress.loaded}/${this.loadProgress.total}` : "...";
-			scopeText = `${theme.fg("muted", "○ Current Folder | ")}${theme.fg("accent", `Loading ${progressText}`)}`;
-		} else if (this.scope === "current") {
-			scopeText = `${theme.fg("accent", "◉ Current Folder")}${theme.fg("muted", " | ○ All")}`;
+		const title = theme.bold("Resume Session");
+		let controls = this.renderControls("Current Folder");
+		let titleRows: string[];
+		if (visibleWidth(title) + 2 + visibleWidth(controls) <= width) {
+			const spacing = width - visibleWidth(title) - visibleWidth(controls);
+			titleRows = [`${title}${" ".repeat(spacing)}${controls}`];
 		} else {
-			scopeText = `${theme.fg("muted", "○ Current Folder | ")}${theme.fg("accent", "◉ All")}`;
+			if (visibleWidth(controls) > width) controls = this.renderControls("Folder");
+			titleRows = [truncateToWidth(title, width, "…"), truncateToWidth(controls, width, "…")];
 		}
-
-		const rightText = truncateToWidth(`${scopeText}  ${nameText}  ${sortText}`, width, "");
-		const availableLeft = Math.max(0, width - visibleWidth(rightText) - 1);
-		const left = truncateToWidth(leftText, availableLeft, "");
-		const spacing = Math.max(0, width - visibleWidth(left) - visibleWidth(rightText));
 
 		// Build hint lines - changes based on state (all branches truncate to width)
 		let hintLine1: string;
@@ -172,7 +159,27 @@ class SessionSelectorHeader implements Component {
 			hintLine2 = truncateToWidth(hint2, width, "…");
 		}
 
-		return [`${left}${" ".repeat(spacing)}${rightText}`, hintLine1, hintLine2];
+		return [...titleRows, hintLine1, hintLine2];
+	}
+
+	private renderControls(folderLabel: string): string {
+		let scopeText: string;
+		if (this.loading) {
+			const progressText = this.loadProgress ? `${this.loadProgress.loaded}/${this.loadProgress.total}` : "...";
+			scopeText = `${theme.fg("muted", `○ ${folderLabel} | `)}${theme.fg("accent", `Loading ${progressText}`)}`;
+		} else if (this.scope === "current") {
+			scopeText = `${theme.fg("accent", `◉ ${folderLabel}`)}${theme.fg("muted", " | ○ All")}`;
+		} else {
+			scopeText = `${theme.fg("muted", `○ ${folderLabel} | `)}${theme.fg("accent", "◉ All")}`;
+		}
+
+		const nameLabel = this.nameFilter === "all" ? "All" : "Named";
+		const nameText = theme.fg("muted", "Name: ") + theme.fg("accent", nameLabel);
+
+		const sortLabel = this.sortMode === "threaded" ? "Threaded" : this.sortMode === "recent" ? "Recent" : "Fuzzy";
+		const sortText = theme.fg("muted", "Sort: ") + theme.fg("accent", sortLabel);
+
+		return `${scopeText}  ${nameText}  ${sortText}`;
 	}
 }
 
