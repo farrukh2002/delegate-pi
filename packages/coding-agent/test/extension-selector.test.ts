@@ -111,7 +111,7 @@ describe("extension selector", () => {
 		const onSelect = vi.fn();
 		const onCancel = vi.fn();
 		const selector = new ExtensionSelectorComponent("Choose", ["Yes", "No"], onSelect, onCancel, {
-			tui: { requestRender } as unknown as TUI,
+			tui: { terminal: { rows: 24 }, requestRender } as unknown as TUI,
 			timeout: 3000,
 		});
 		try {
@@ -171,6 +171,70 @@ describe("extension selector", () => {
 		expect(visibleOptions(output)).toEqual(options.slice(5, 15));
 		expect(output).toContain("→ option-15");
 		expect(output).toContain("  (15/15)");
+	});
+
+	describe("short terminals", () => {
+		const longQuestion = Array.from({ length: 120 }, (_, index) => `word${index + 1}`).join(" ");
+		const options = ["SQLite", "Postgres", "Other — type your answer"];
+
+		function createBounded(rows: number, title = longQuestion) {
+			const onSelect = vi.fn();
+			const tui = { terminal: { rows }, requestRender: vi.fn() } as unknown as TUI;
+			const selector = new ExtensionSelectorComponent(title, options, onSelect, vi.fn(), { tui });
+			return { selector, onSelect };
+		}
+
+		it("keeps every choice, the selection marker and the key hints within a 16-row terminal", () => {
+			const { selector } = createBounded(16);
+			const lines = selector.render(46);
+			const output = stripAnsi(lines.join("\n"));
+			expect(lines.length).toBeLessThanOrEqual(13);
+			expect(output).toContain("→ 1. SQLite");
+			expect(output).toContain("3. Other — type your answer");
+			expect(output).toContain("↑↓ navigate");
+			expect(output).toContain("word1 ");
+			expect(output).not.toContain("word120");
+			for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(46);
+		});
+
+		it("keeps the selected entry visible after moving down to the typed-answer entry", () => {
+			const { selector } = createBounded(16);
+			for (let index = 0; index < 3; index++) selector.handleInput("\x1b[B");
+			const output = stripAnsi(selector.render(46).join("\n"));
+			expect(output).toContain("→ 3. Other — type your answer");
+			expect(output).toContain("↑↓ navigate");
+		});
+
+		it("scrolls a long question with the page keys", () => {
+			const { selector } = createBounded(16);
+			expect(stripAnsi(selector.render(46).join("\n"))).toContain("(1-");
+			for (let index = 0; index < 20; index++) selector.handleInput("\x1b[6~");
+			const output = stripAnsi(selector.render(46).join("\n"));
+			expect(output).toContain("word120");
+			expect(output).not.toContain("word1 ");
+			expect(output).toContain("3. Other — type your answer");
+			for (let index = 0; index < 20; index++) selector.handleInput("\x1b[5~");
+			expect(stripAnsi(selector.render(46).join("\n"))).toContain("word1 ");
+		});
+
+		it("shrinks a long option list to keep the controls in view", () => {
+			const many = Array.from({ length: 12 }, (_, index) => `option-${index + 1}`);
+			const tui = { terminal: { rows: 14 }, requestRender: vi.fn() } as unknown as TUI;
+			const selector = new ExtensionSelectorComponent("Choose", many, vi.fn(), vi.fn(), { tui });
+			for (let index = 0; index < 8; index++) selector.handleInput("\x1b[B");
+			const lines = selector.render(60);
+			const output = stripAnsi(lines.join("\n"));
+			expect(lines.length).toBeLessThanOrEqual(11);
+			expect(output).toContain("→ 9. option-9");
+			expect(output).toContain("(9/12)");
+			expect(output).toContain("↑↓ navigate");
+		});
+
+		it("renders the same as an unbounded selector when the terminal has room", () => {
+			const { selector } = createBounded(40, "Which database?");
+			const unbounded = createSelector();
+			expect(selector.render(80)).toEqual(unbounded.selector.render(80));
+		});
 	});
 
 	it("renders short and empty option lists without a scroll indicator", () => {

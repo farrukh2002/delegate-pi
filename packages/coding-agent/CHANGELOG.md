@@ -199,6 +199,11 @@
 - Fixed delegate children failing to start when task or temporary directory paths exceed the Unix socket path limit.
 - Fixed delegate snapshots missing same-size edits. `accept` and `undo` keep the final state and any trace until `prune` removes them.
 - Fixed delegate `accept` and `undo` missing final usage when they run before the next status check.
+- Fixed update checks using the stable channel for installs on the `dev` or `rc` channel. Self-update accepts a version change from the configured installer and does not treat an unchanged `dev` or `rc` version as an error.
+- Fixed GitHub Copilot ignoring the selected thinking level on supported Gemini and Kimi models and not counting reasoning tokens ([#12110](https://github.com/earendil-works/pi/pull/12110) by [@DenielC1](https://github.com/DenielC1)).
+- Fixed Mistral Large 4 tool calls stalling. Strict tool schemas are off for Mistral models unless explicitly enabled ([#12148](https://github.com/earendil-works/pi/issues/12148)).
+- Fixed OpenAI Codex turns failing when the WebSocket reaches its 60-minute limit. Pi retries on a new connection ([#12124](https://github.com/earendil-works/pi/issues/12124)).
+- Fixed `ask_user` and other selector dialogs hiding their choices, selection marker and key hints in short terminals. The dialog now limits its height to the terminal, and a long question scrolls with the page keys.
 
 ### Removed
 

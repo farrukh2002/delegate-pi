@@ -10,6 +10,7 @@ type DialogContext = {
 	editor: Component & { getText(): string; setText(text: string): void };
 	focused: Component | undefined;
 	ui: {
+		terminal: { rows: number };
 		setFocus: (component: Component) => void;
 		requestRender: () => void;
 		showOverlay: (component: Component) => { hide: () => void; setHidden: (hidden: boolean) => void };
@@ -58,6 +59,7 @@ function createContext(): DialogContext & DialogMethods {
 		editor,
 		focused: undefined,
 		ui: {
+			terminal: { rows: 24 },
 			setFocus: (component) => {
 				context.focused = component;
 			},
