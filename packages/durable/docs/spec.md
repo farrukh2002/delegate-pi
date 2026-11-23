@@ -480,6 +480,8 @@ type ConversationRetryPolicy = {
   maxRetries: number;
   baseDelayMs: number;
   maxAgentDelayMs?: number;
+  /** Explicit delay per retry in ms; wins over `baseDelayMs` exponential backoff when set. */
+  delayScheduleMs?: readonly number[];
 };
 
 /** Automatic compaction thresholds (section 8.7); manual compaction ignores `enabled`. */
@@ -536,7 +538,7 @@ type HarnessSettings = {
 type Settings = {
   readonly extensions?: readonly Extension[]; // default: every installed extension, in install order
   readonly stream: ConversationStreamOptions; // default {}
-  readonly retry: ConversationRetryPolicy; // { enabled: true, maxRetries: 3, baseDelayMs: 2000, maxAgentDelayMs: 60000 }
+  readonly retry: ConversationRetryPolicy; // { enabled: true, maxRetries: 6, baseDelayMs: 2000, delayScheduleMs: [10s, 10s, 15s, 20s, 40s, 90s], maxAgentDelayMs: 90000 }
   readonly compaction: CompactionPolicy & Pick<CompactionSettings, "modelOverrides">; // { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, backgroundTokens: 32768 }
   readonly toolExecution: ToolExecutionMode; // "parallel"
   readonly steeringMode: QueueMode; // "one-at-a-time"

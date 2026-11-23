@@ -1,5 +1,6 @@
 import type { Draft } from "@earendil-works/chord/delta";
 import { copyJson } from "@earendil-works/chord/json";
+import { mergeRetryPolicy } from "@earendil-works/pi-ai/utils/retry";
 import { defineDoc } from "../documents.ts";
 import { documentRetention, persistWithin } from "../session/session.ts";
 import type { ConversationId, ConversationRecord, Tx } from "../types.ts";
@@ -22,9 +23,10 @@ import type {
 
 export const DEFAULT_RETRY_POLICY: ConversationRetryPolicy = {
 	enabled: true,
-	maxRetries: 3,
+	maxRetries: 6,
 	baseDelayMs: 2000,
-	maxAgentDelayMs: 60000,
+	delayScheduleMs: [10_000, 10_000, 15_000, 20_000, 40_000, 90_000],
+	maxAgentDelayMs: 90000,
 };
 
 export const DEFAULT_COMPACTION_POLICY: CompactionPolicy = {
@@ -71,7 +73,7 @@ export function resolveSettings(settings: HarnessSettings | undefined): Settings
 	return {
 		...(extensions === undefined ? {} : { extensions }),
 		stream: { ...settings?.stream },
-		retry: { ...DEFAULT_RETRY_POLICY, ...settings?.retry },
+		retry: mergeRetryPolicy(DEFAULT_RETRY_POLICY, settings?.retry),
 		compaction: { ...DEFAULT_COMPACTION_POLICY, ...settings?.compaction },
 		// Field by field, so an explicitly undefined interval keeps its default.
 		progress: {

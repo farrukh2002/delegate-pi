@@ -5,7 +5,16 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { BACKGROUND_CONTEXT, whenLive } from "@p2/app/v1";
 import { Settings } from "../../plugins/settings/contract.ts";
+import { validateSettings } from "../../src/runtime/settings.ts";
 import { expectChord, startFixture } from "./helpers.ts";
+
+test("Settings accepts only non-negative safe integers in a retry delay schedule", () => {
+	const settings = { retry: { delayScheduleMs: [0, 500] } };
+	assert.deepEqual(validateSettings(settings), settings);
+	for (const delay of [0.5, -1, Number.MAX_SAFE_INTEGER + 1]) {
+		assert.throws(() => validateSettings({ retry: { delayScheduleMs: [delay] } }), /Invalid settings.json/);
+	}
+});
 
 test("Settings sets and removes top-level settings, keeps the others, and refuses invalid ones", async (t) => {
 	const fixture = await startFixture();

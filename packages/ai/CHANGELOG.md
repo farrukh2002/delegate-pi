@@ -89,6 +89,7 @@
 ### Changed
 
 - Updated `openai` to 7.59.0
+- Agent-level retries now default to 6 retries on a 10s, 10s, 15s, 20s, 40s, 90s delay schedule (7 runs total) instead of 3 retries with 2s/4s/8s exponential backoff, and the default `maxAgentDelayMs` cap rose from 60s to 90s. `RetryPolicy` gained `delayScheduleMs`, which wins over `baseDelayMs` exponential backoff when set, and the new `mergeRetryPolicy` helper merges a partial policy over defaults; an explicit `baseDelayMs` keeps exponential backoff
 - Updated `@google/genai` to 2.32.0. The Google adapters turn off its automatic continuation, so a `CONTINUATION` finish ends the turn with stop reason `length` ([#12103](https://github.com/earendil-works/pi/pull/12103) by [@rometi](https://github.com/rometi))
 - Anthropic message threads are now on by default for any provider whose baseUrl is on api.anthropic.com, not only the `anthropic` provider ([#11987](https://github.com/earendil-works/pi/issues/11987))
 - `openai-completions` now sends system messages of reasoning models (the system prompt and mid-conversation system messages) with the `developer` role only to `api.openai.com`; all other hosts, including Azure and OpenRouter, get `system`. Set `compat.supportsDeveloperRole` to override ([#10741](https://github.com/earendil-works/pi/issues/10741))

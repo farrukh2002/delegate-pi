@@ -1,3 +1,4 @@
+import { retryDelayMs } from "@earendil-works/pi-ai";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
@@ -441,18 +442,86 @@ describe("SettingsManager", () => {
 	});
 
 	describe("retry settings", () => {
-		it("defaults and overrides agent retry delay cap", () => {
+		it("defaults to six retries on the 10/10/15/20/40/90s schedule", () => {
 			expect(SettingsManager.inMemory().getRetrySettings()).toEqual({
 				enabled: true,
-				maxRetries: 3,
+				maxRetries: 6,
 				baseDelayMs: 2000,
-				maxAgentDelayMs: 60000,
+				delayScheduleMs: [10_000, 10_000, 15_000, 20_000, 40_000, 90_000],
+				maxAgentDelayMs: 90000,
 			});
+		});
+
+		it("switches to exponential backoff when baseDelayMs is set", () => {
+			const policy = SettingsManager.inMemory({ retry: { baseDelayMs: 500 } }).getRetrySettings();
+			expect(retryDelayMs(policy, 1)).toBe(500);
+			expect(retryDelayMs(policy, 2)).toBe(1000);
+		});
+
+		it("lets a project baseDelayMs replace an inherited schedule", () => {
+			writeFileSync(
+				join(agentDir, "settings.json"),
+				JSON.stringify({ retry: { delayScheduleMs: [60_000], maxRetries: 2 } }),
+			);
+			writeFileSync(
+				join(projectDir, CONFIG_DIR_NAME, "settings.json"),
+				JSON.stringify({ retry: { baseDelayMs: 500 } }),
+			);
+
+			const manager = SettingsManager.create(projectDir, agentDir);
+			const policy = manager.getRetrySettings();
+			expect(policy.maxRetries).toBe(2);
+			expect(retryDelayMs(policy, 1)).toBe(500);
+			expect(retryDelayMs(policy, 2)).toBe(1000);
+			expect(manager.getGlobalSettings().retry?.delayScheduleMs).toEqual([60_000]);
+		});
+
+		it("uses a schedule supplied alongside baseDelayMs", () => {
+			const manager = SettingsManager.inMemory({ retry: { delayScheduleMs: [60_000] } });
+			manager.applyOverrides({ retry: { baseDelayMs: 500, delayScheduleMs: [0, 1000] } });
+			const policy = manager.getRetrySettings();
+			expect(retryDelayMs(policy, 1)).toBe(0);
+			expect(retryDelayMs(policy, 2)).toBe(1000);
+		});
+
+		it("ignores a fractional delay schedule and uses the configured exponential backoff", () => {
+			const policy = SettingsManager.inMemory({
+				retry: { baseDelayMs: 500, delayScheduleMs: [0.5] },
+			}).getRetrySettings();
+			expect(retryDelayMs(policy, 1)).toBe(500);
+		});
+
+		it("uses the built-in retry policy for null settings values", () => {
+			writeFileSync(
+				join(agentDir, "settings.json"),
+				JSON.stringify({
+					retry: {
+						enabled: null,
+						maxRetries: null,
+						baseDelayMs: null,
+						maxAgentDelayMs: null,
+						delayScheduleMs: null,
+					},
+				}),
+			);
+
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getRetryEnabled()).toBe(true);
+			expect(manager.getRetrySettings()).toEqual(SettingsManager.inMemory().getRetrySettings());
+		});
+
+		it("applies overrides and the agent retry delay cap", () => {
 			expect(
 				SettingsManager.inMemory({
 					retry: { enabled: true, maxRetries: 10, baseDelayMs: 500, maxAgentDelayMs: 5000 },
 				}).getRetrySettings(),
-			).toEqual({ enabled: true, maxRetries: 10, baseDelayMs: 500, maxAgentDelayMs: 5000 });
+			).toEqual({
+				enabled: true,
+				maxRetries: 10,
+				baseDelayMs: 500,
+				delayScheduleMs: undefined,
+				maxAgentDelayMs: 5000,
+			});
 		});
 	});
 

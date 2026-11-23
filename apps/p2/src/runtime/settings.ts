@@ -29,6 +29,7 @@ const schema = obj({
 			enabled: opt(bool()),
 			maxRetries: opt(integer(0)),
 			baseDelayMs: opt(integer(0)),
+			delayScheduleMs: opt(arr(int({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }))),
 			maxAgentDelayMs: opt(integer(0)),
 		}),
 	),

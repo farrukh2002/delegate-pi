@@ -555,7 +555,13 @@ describe("generation", () => {
 	it("resolves settings over the built-in defaults", () => {
 		expect(resolveSettings(undefined)).toEqual({
 			stream: {},
-			retry: { enabled: true, maxRetries: 3, baseDelayMs: 2000, maxAgentDelayMs: 60000 },
+			retry: {
+				enabled: true,
+				maxRetries: 6,
+				baseDelayMs: 2000,
+				delayScheduleMs: [10_000, 10_000, 15_000, 20_000, 40_000, 90_000],
+				maxAgentDelayMs: 90000,
+			},
 			compaction: { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, backgroundTokens: 32768 },
 			progress: { partialIntervalMs: 100, outputIntervalMs: 100, persistWithinMs: 1000 },
 			toolExecution: "parallel",
@@ -569,7 +575,7 @@ describe("generation", () => {
 		expect(resolveSettings({ restartLimit: 0 }).restartLimit).toBe(5);
 		expect(resolveSettings({ restartLimit: Number.POSITIVE_INFINITY }).restartLimit).toBe(Number.POSITIVE_INFINITY);
 		expect(resolveSettings({ retry: { enabled: false }, compaction: { backgroundTokens: 0 } })).toMatchObject({
-			retry: { enabled: false, maxRetries: 3, baseDelayMs: 2000 },
+			retry: { enabled: false, maxRetries: 6, baseDelayMs: 2000 },
 			compaction: { enabled: true, backgroundTokens: 0 },
 		});
 		expect(resolveSettings({ progress: { outputIntervalMs: 500 } }).progress).toEqual({

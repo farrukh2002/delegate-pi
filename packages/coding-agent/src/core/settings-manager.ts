@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai";
+import type { Model, RetryPolicy } from "@earendil-works/pi-ai";
 import type { ScrollViewScrollbar, TerminalCapabilities, WheelScrollLines } from "@earendil-works/pi-tui";
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -146,6 +146,13 @@ function resolveDefaultTools(entries: string[]): string[] {
 /** Deep merge settings: project/overrides take precedence, nested objects merge recursively */
 function deepMergeSettings(base: Settings, overrides: Settings): Settings {
 	const merged = deepMergeObjects(base as Record<string, unknown>, overrides as Record<string, unknown>) as Settings;
+	if (
+		merged.retry?.delayScheduleMs != null &&
+		overrides.retry?.baseDelayMs != null &&
+		overrides.retry.delayScheduleMs === undefined
+	) {
+		delete merged.retry.delayScheduleMs;
+	}
 	const defaultTools = mergeDefaultTools(base.defaultTools, overrides.defaultTools);
 	return defaultTools === undefined ? merged : { ...merged, defaultTools };
 }
@@ -934,12 +941,24 @@ export class SettingsManager {
 		this.save();
 	}
 
-	getRetrySettings(): { enabled: boolean; maxRetries: number; baseDelayMs: number; maxAgentDelayMs: number } {
+	getRetrySettings(): RetryPolicy {
+		const retry = this.settings.retry;
+		const defaults = SETTINGS_DEFAULTS.retry;
+		const schedule: unknown = retry?.delayScheduleMs;
+		const fallbackSchedule = retry?.baseDelayMs == null ? defaults.delayScheduleMs : undefined;
 		return {
 			enabled: this.getRetryEnabled(),
-			maxRetries: this.settings.retry?.maxRetries ?? SETTINGS_DEFAULTS.retry.maxRetries,
-			baseDelayMs: this.settings.retry?.baseDelayMs ?? SETTINGS_DEFAULTS.retry.baseDelayMs,
-			maxAgentDelayMs: this.settings.retry?.maxAgentDelayMs ?? SETTINGS_DEFAULTS.retry.maxAgentDelayMs,
+			maxRetries: retry?.maxRetries ?? defaults.maxRetries,
+			baseDelayMs: retry?.baseDelayMs ?? defaults.baseDelayMs,
+			maxAgentDelayMs: retry?.maxAgentDelayMs ?? defaults.maxAgentDelayMs,
+			delayScheduleMs:
+				Array.isArray(schedule) &&
+				schedule.every(
+					(delay: unknown): delay is number =>
+						typeof delay === "number" && Number.isSafeInteger(delay) && delay >= 0,
+				)
+					? schedule
+					: fallbackSchedule,
 		};
 	}
 

@@ -199,6 +199,9 @@ describe("generated configuration schemas", () => {
 			{ httpIdleTimeoutMs: "bogus" },
 			{ websocketConnectTimeoutMs: "30000" },
 			{ codemode: { inlineBudget: -1 } },
+			{ retry: { delayScheduleMs: [0.5] } },
+			{ retry: { delayScheduleMs: [-1] } },
+			{ retry: { delayScheduleMs: [Number.MAX_SAFE_INTEGER + 1] } },
 		]) {
 			expect(validator.Check(invalid)).toBe(false);
 		}
@@ -212,6 +215,7 @@ describe("generated configuration schemas", () => {
 				httpIdleTimeoutMs: 0,
 				websocketConnectTimeoutMs: "disabled",
 				codemode: { inlineBudget: 0 },
+				retry: { delayScheduleMs: [0, 500] },
 			}),
 		).toBe(true);
 	});

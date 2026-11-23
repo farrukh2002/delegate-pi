@@ -130,9 +130,10 @@ See [Themes](themes.md) and [Terminal Setup](terminal-setup.md) for format and p
 | `httpIdleTimeoutMs` | number \| `"disabled"` | `300000` | HTTP header and body idle timeout in milliseconds. Set to `0` or `"disabled"` to disable. |
 | `websocketConnectTimeoutMs` | number \| `"disabled"` | `15000` | WebSocket connection timeout in milliseconds. Set to `0` or `"disabled"` to disable. |
 | `retry.enabled` | boolean | `true` | Enable automatic agent-level retry for transient failures. |
-| `retry.maxRetries` | number | `3` | Maximum agent-level retry attempts. |
-| `retry.baseDelayMs` | number | `2000` | Initial exponential-backoff delay in milliseconds. |
-| `retry.maxAgentDelayMs` | number | `60000` | Maximum agent-level retry delay in milliseconds. |
+| `retry.maxRetries` | number | `6` | Maximum agent-level retry attempts. |
+| `retry.baseDelayMs` | number | `2000` | Exponential backoff base delay in milliseconds. Replaces an inherited delay schedule unless the same settings layer also sets `retry.delayScheduleMs`. |
+| `retry.delayScheduleMs` | integer[] | `[10000, 10000, 15000, 20000, 40000, 90000]` | Delay before each retry in whole milliseconds, from `0` to `9007199254740991`. Retries past the end use the last entry. Pi ignores an invalid schedule. |
+| `retry.maxAgentDelayMs` | number | `90000` | Maximum agent-level retry delay in milliseconds. |
 | `retry.provider.timeoutMs` | number | `httpIdleTimeoutMs` | Provider request timeout in milliseconds. |
 | `retry.provider.maxRetries` | number | `0` | Provider-level retry attempts. |
 | `retry.provider.maxRetryDelayMs` | number | `60000` | Maximum server-requested delay in milliseconds. Set to `0` to disable the limit. |

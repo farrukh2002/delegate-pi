@@ -68,6 +68,7 @@
 
 ### Changed
 
+- The default retry policy is now 6 retries (7 runs total) on a 10s, 10s, 15s, 20s, 40s, 90s delay schedule instead of 3 retries with 2s/4s/8s exponential backoff; `ConversationRetryPolicy` gained `delayScheduleMs`, and a host setting only `baseDelayMs` selects exponential backoff
 - `SqliteStorage.commit()` costs a few SQL statements per call instead of about eight per batch: it reads the check state of all batches up front, checks them in memory, and writes the accepted batches per table in multi-row statements (rows as one JSON array parameter; rows with much text bound column by column), so a group commit over a remote SQLite takes a few round trips, not hundreds. A stored document record that cannot be parsed now rejects the call as a storage failure instead of refusing the batch.
 
 ### Fixed

@@ -172,16 +172,33 @@
         },
         "maxRetries": {
           "type": "number",
-          "default": 3
+          "default": 6
         },
         "baseDelayMs": {
           "type": "number",
-          "description": "Exponential backoff base delay in milliseconds: 2s, 4s, 8s.",
+          "description": "Exponential backoff base delay in milliseconds. Replaces an inherited delay schedule unless this settings layer also sets delayScheduleMs.",
           "default": 2000
+        },
+        "delayScheduleMs": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "description": "Explicit delay before each retry in whole milliseconds. Retries past the end reuse the last entry. Takes precedence over baseDelayMs set in the same settings layer.",
+          "default": [
+            10000,
+            10000,
+            15000,
+            20000,
+            40000,
+            90000
+          ]
         },
         "maxAgentDelayMs": {
           "type": "number",
-          "default": 60000
+          "default": 90000
         },
         "provider": {
           "type": "object",

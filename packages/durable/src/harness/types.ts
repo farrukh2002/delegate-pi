@@ -670,6 +670,8 @@ export type ConversationRetryPolicy = {
 	maxRetries: number;
 	baseDelayMs: number;
 	maxAgentDelayMs?: number;
+	/** Explicit delay per retry in ms; wins over `baseDelayMs` exponential backoff when set. */
+	delayScheduleMs?: readonly number[];
 };
 
 /** Automatic compaction thresholds (spec §8.7); manual compaction ignores `enabled`. */

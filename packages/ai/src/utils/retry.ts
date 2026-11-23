@@ -170,28 +170,57 @@ const RETRYABLE_PROVIDER_ERROR_PATTERN = buildProviderErrorPattern([
 ]);
 
 /**
- * Retry policy: bounded attempts with exponential backoff (`baseDelayMs * 2^(attempt-1)`).
- * `maxAgentDelayMs` caps each computed delay and defaults to 60 seconds.
- * Matches `settings.retry` (`enabled`, `maxRetries`, `baseDelayMs`, `maxAgentDelayMs`) in coding-agent; kept
- * here so the classifier and the policy-driven retry loop live together and stay reusable
+ * Retry policy: bounded attempts with backoff, either exponential (`baseDelayMs * 2^(attempt-1)`) or an
+ * explicit `delayScheduleMs`. `maxAgentDelayMs` caps each computed delay and defaults to 90 seconds.
+ * Matches `settings.retry` (`enabled`, `maxRetries`, `baseDelayMs`, `delayScheduleMs`, `maxAgentDelayMs`) in
+ * coding-agent; kept here so the classifier and the policy-driven retry loop live together and stay reusable
  * by the SDK and other callers.
  */
 export interface RetryPolicy {
 	enabled: boolean;
 	/** Max retry attempts (0 = no retries). The initial call never counts as a retry. */
 	maxRetries: number;
-	/** Base delay in ms. Per-attempt delay is `baseDelayMs * 2^(attempt-1)` before jitter. */
+	/** Exponential backoff base delay in ms. Per-attempt delay is `baseDelayMs * 2^(attempt-1)` before jitter. */
 	baseDelayMs: number;
-	/** Optional cap for agent-level retry delays in ms. Defaults to 60 seconds. */
+	/** Optional cap for agent-level retry delays in ms. Defaults to 90 seconds. */
 	maxAgentDelayMs?: number;
+	/**
+	 * Optional explicit delay per retry in ms; retry N waits `delayScheduleMs[N-1]`, and retries past the end
+	 * reuse the last entry. Wins over `baseDelayMs` when set.
+	 */
+	delayScheduleMs?: readonly number[];
 }
 
-export const DEFAULT_MAX_AGENT_RETRY_DELAY_MS = 60_000;
+export const DEFAULT_MAX_AGENT_RETRY_DELAY_MS = 90_000;
 
-export function retryDelayMs(policy: Pick<RetryPolicy, "baseDelayMs" | "maxAgentDelayMs">, attempt: number): number {
-	const delay = policy.baseDelayMs * 2 ** Math.max(0, attempt - 1);
+export function retryDelayMs(
+	policy: Pick<RetryPolicy, "baseDelayMs" | "maxAgentDelayMs" | "delayScheduleMs">,
+	attempt: number,
+): number {
+	const schedule = policy.delayScheduleMs;
+	const delay =
+		schedule !== undefined && schedule.length > 0
+			? schedule[Math.min(Math.max(attempt, 1), schedule.length) - 1]
+			: policy.baseDelayMs * 2 ** Math.max(0, attempt - 1);
 	const safeDelay = Number.isSafeInteger(delay) ? delay : Number.MAX_SAFE_INTEGER;
 	return Math.min(safeDelay, policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS);
+}
+
+/**
+ * Merges a partial retry policy over a base policy (typically defaults). An explicit `baseDelayMs` drops the
+ * base's `delayScheduleMs`, because configuring the exponential base selects exponential backoff; an explicit
+ * `delayScheduleMs` always wins.
+ */
+export function mergeRetryPolicy(base: RetryPolicy, override: Partial<RetryPolicy> | undefined): RetryPolicy {
+	const merged: RetryPolicy = { ...base, ...override };
+	if (
+		merged.delayScheduleMs !== undefined &&
+		override?.delayScheduleMs === undefined &&
+		override?.baseDelayMs !== undefined
+	) {
+		merged.delayScheduleMs = undefined;
+	}
+	return merged;
 }
 
 /** Optional callbacks emitted by {@link retryAssistantCall} around each retry. */

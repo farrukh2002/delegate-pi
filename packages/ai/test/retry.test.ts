@@ -1,7 +1,13 @@
 import { getEventListeners } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { fauxAssistantMessage } from "../src/providers/faux.ts";
-import { isRetryableAssistantError, type RetryPolicy, retryAssistantCall, retryDelayMs } from "../src/utils/retry.ts";
+import {
+	isRetryableAssistantError,
+	mergeRetryPolicy,
+	type RetryPolicy,
+	retryAssistantCall,
+	retryDelayMs,
+} from "../src/utils/retry.ts";
 
 const openAIExplicitRetryMessage =
 	"An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID req_******** in your message.";
@@ -277,9 +283,21 @@ describe("provider retry classification", () => {
 describe("retryDelayMs", () => {
 	it("caps agent retry delay", () => {
 		// Regression for #8826.
-		expect(retryDelayMs({ baseDelayMs: 2000 }, 6)).toBe(60000);
+		expect(retryDelayMs({ baseDelayMs: 2000 }, 6)).toBe(64000);
+		expect(retryDelayMs({ baseDelayMs: 2000 }, 7)).toBe(90000);
 		expect(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 5000 }, 5)).toBe(5000);
 		expect(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 0 }, 5)).toBe(0);
+	});
+
+	it("uses the explicit delay schedule and repeats its last entry", () => {
+		const policy = { baseDelayMs: 2000, delayScheduleMs: [10_000, 10_000, 15_000, 20_000, 40_000, 90_000] } as const;
+		expect(retryDelayMs(policy, 1)).toBe(10_000);
+		expect(retryDelayMs(policy, 2)).toBe(10_000);
+		expect(retryDelayMs(policy, 3)).toBe(15_000);
+		expect(retryDelayMs(policy, 4)).toBe(20_000);
+		expect(retryDelayMs(policy, 5)).toBe(40_000);
+		expect(retryDelayMs(policy, 6)).toBe(90_000);
+		expect(retryDelayMs(policy, 7)).toBe(90_000);
 	});
 });
 
@@ -433,5 +451,48 @@ describe("retryAssistantCall", () => {
 		expect(res.errorMessage).toBeUndefined();
 		expect(produce).toHaveBeenCalledTimes(1);
 		expect(onRetryFinished).toHaveBeenCalledWith(false, 1, "terminated");
+	});
+
+	it("retries with the explicit delay schedule", async () => {
+		const produce = vi.fn(async () => fauxAssistantMessage("", { stopReason: "error", errorMessage: "terminated" }));
+		const policy: RetryPolicy = {
+			enabled: true,
+			maxRetries: 2,
+			baseDelayMs: 60_000,
+			delayScheduleMs: [5, 10],
+		};
+		const onRetryScheduled = vi.fn();
+		await retryAssistantCall(produce, policy, undefined, { onRetryScheduled });
+		expect(onRetryScheduled.mock.calls.map((call) => call[2])).toEqual([5, 10]);
+	});
+});
+
+describe("mergeRetryPolicy", () => {
+	const base: RetryPolicy = {
+		enabled: true,
+		maxRetries: 6,
+		baseDelayMs: 2000,
+		delayScheduleMs: [10_000, 10_000, 15_000, 20_000, 40_000, 90_000],
+		maxAgentDelayMs: 90_000,
+	};
+
+	it("returns the base when the override is undefined", () => {
+		expect(mergeRetryPolicy(base, undefined)).toEqual(base);
+	});
+
+	it("keeps the base schedule when the override only sets other fields", () => {
+		expect(mergeRetryPolicy(base, { maxRetries: 2 })).toEqual({ ...base, maxRetries: 2 });
+	});
+
+	it("drops the base schedule when the override sets baseDelayMs", () => {
+		expect(mergeRetryPolicy(base, { baseDelayMs: 500 })).toEqual({
+			...base,
+			baseDelayMs: 500,
+			delayScheduleMs: undefined,
+		});
+	});
+
+	it("lets an override schedule win and replaces it entirely", () => {
+		expect(mergeRetryPolicy(base, { delayScheduleMs: [30_000] })).toEqual({ ...base, delayScheduleMs: [30_000] });
 	});
 });

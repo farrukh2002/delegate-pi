@@ -57,8 +57,16 @@ const RetrySettingsSchema = Type.Object({
 	maxRetries: Type.Optional(Type.Number({ default: SETTINGS_DEFAULTS.retry.maxRetries })),
 	baseDelayMs: Type.Optional(
 		Type.Number({
-			description: "Exponential backoff base delay in milliseconds: 2s, 4s, 8s.",
+			description:
+				"Exponential backoff base delay in milliseconds. Replaces an inherited delay schedule unless this settings layer also sets delayScheduleMs.",
 			default: SETTINGS_DEFAULTS.retry.baseDelayMs,
+		}),
+	),
+	delayScheduleMs: Type.Optional(
+		Type.Array(nonNegativeSafeInteger(), {
+			description:
+				"Explicit delay before each retry in whole milliseconds. Retries past the end reuse the last entry. Takes precedence over baseDelayMs set in the same settings layer.",
+			default: SETTINGS_DEFAULTS.retry.delayScheduleMs,
 		}),
 	),
 	maxAgentDelayMs: Type.Optional(Type.Number({ default: SETTINGS_DEFAULTS.retry.maxAgentDelayMs })),
