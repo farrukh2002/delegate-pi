@@ -809,7 +809,7 @@ describe("delegate ui", () => {
 			tui as never,
 			"/tmp/project",
 		);
-		const countRows = (rows: string[]): number =>
+		const countRows = (rows: readonly string[]): number =>
 			rows.map((line) => stripAnsi(line)).filter((line) => line.trim() !== "").length;
 		expect(countRows(component.render(120))).toBe(1);
 
