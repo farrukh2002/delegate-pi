@@ -62,7 +62,7 @@ try {
 		},
 	});
 	const toolNames = ["http_request", "web_search", "web_fetch", "git_index", "git_search", "git_read"];
-	assert.deepEqual([...tools.keys()], toolNames);
+	assert.deepEqual([...tools.keys()], [...toolNames, "web_tools"]);
 	const tool = tools.get("http_request");
 	const searchTool = tools.get("web_search");
 	const fetchTool = tools.get("web_fetch");
